@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Цепочки эффектов · Авторитетный сервер</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@500..700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="deck.css">
+</head>
+<body>
+<div class="page">
+  <nav class="nav" aria-label="Страницы">
+    <a class="home" href="index.html">Обзор</a>
+    <a href="why.html">Зачем</a>
+    <a href="before.html">Как было</a>
+    <a href="now.html">Как стало</a>
+    <a href="server-input.html">Ввод на сервере</a>
+    <a href="effects.html" aria-current="page">Цепочки эффектов</a>
+    <a href="random.html">Синхронизация рандома</a>
+    <a href="edge-cases.html">Граничные случаи</a>
+    <a href="problems.html">Решённые проблемы</a>
+  </nav>
+
+  <header class="head">
+    <span class="eyebrow">Синхронизация цепочек · WIP-коммит</span>
+    <h1>Реплицируем эффекты, а не цепочку</h1>
+    <p class="lede">Раньше цепочки реплицировались и заново прогонялись на каждом клиенте. Теперь цепочка работает только в авторитетном мире и на предсказывающем клиенте для его собственных действий. Каждый созданный ею эффект синхронизируется отдельно.</p>
+  </header>
+
+  <section>
+    <div class="cols">
+      <div class="card">
+        <span class="who b">Было</span>
+        <h3>Единица синхронизации — цепочка</h3>
+        <ul class="plain">
+          <li>Отправляем id цепочки + сид + источник/цель</li>
+          <li>Каждый клиент сам выполняет таргетинг, тики и дочерние эффекты</li>
+          <li>Поздний вход через <code>LateJoinMode</code>, реализован частично</li>
+          <li>Нет зависимости: ждём до 3&nbsp;с, потом удаляем</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="who g">Стало</span>
+        <h3>Единица синхронизации — эффект</h3>
+        <ul class="plain">
+          <li>Таргетинг и тики только в авторитетном мире</li>
+          <li>Удалённые клиенты получают готовые эффекты с источником, целью, позицией и длительностью</li>
+          <li>Поздний вход от <code>StartServerTime</code>: эффекты стартуют со своим реальным возрастом</li>
+          <li>Нет зависимости: <code>PendingEffectData</code>, пока она не разрешится</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Стратегия синхронизации на эффект</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>EffectSyncStrategy</th><th>Транспорт</th><th>Конфигов</th><th>Правило</th></tr></thead>
+      <tbody>
+        <tr><td><code>None</code></td><td>Не отправляется. Для логических эффектов, чей результат синхронизируется иначе, например урон или параметры.</td><td class="mono">217</td><td>Предсказанные копии таких эффектов никогда не удаляются по таймауту.</td></tr>
+        <tr><td><code>Event</code></td><td><code>CreateEffectNetworkEvent</code> один раз, через источник или цель</td><td class="mono">160</td><td>Короче 2&nbsp;с и без лимита стаков. Проверяется <code>EffectSyncConfigsValidator</code>.</td></tr>
+        <tr><td><code>NetworkObject</code></td><td>Сетевой объект эффекта, плюс поле <code>Refresh</code> и трансформ</td><td class="mono">258</td><td>Для долгих, стакающихся или движущихся эффектов и всего, что должен увидеть поздно зашедший.</td></tr>
+      </tbody>
+    </table></div>
+    <p><code>EffectNetworkData</code> несёт id эффекта, id источника / цели / родителя, позиции, множитель урона, длительность, <code>StartServerTime</code>, крит, тип урона, <code>ChainKey</code> и индекс в цепочке. Обновления отправляются повторно, только если время окончания сдвинулось больше чем на половину длительности.</p>
+  </section>
+
+  <section>
+    <h2>Сопоставление предсказания с серверным результатом</h2>
+    <p>У владельца серверный эффект приходит, когда клиент уже создал такой же эффект по своему предсказанию. Нужно понять, что это один и тот же эффект, поэтому обе стороны выводят одинаковую идентичность:</p>
+<pre><code>EffectChainKey   { ActionTick, Index }          // тик команды + номер цепочки от этого действия
+random seed      = hash(RandomBaseSeed(source), ActionTick, Index)
+EffectInChainIndex { Stage, Index, SubIndex, Count }
+HitKey           = FromEffect(chainKey, inChainIndex, hitNumber)   // или FromAction(tick)</code></pre>
+    <div class="flow">
+      <div class="step c"><span class="who c">Клиент</span><div>Создаёт цепочку с архетипом <code>Predicted</code> (<code>Self</code> + <code>PredictedEffect</code>). Тот же сид — те же броски крита и те же дочерние эффекты.</div></div>
+      <div class="step s"><span class="who s">Сервер</span><div>Прогоняет цепочку с тем же ключом, затем <code>SendEffectSystem</code> отправляет каждый эффект по его стратегии.</div></div>
+      <div class="step c"><span class="who g">Принятие</span><div><code>TryAdoptPredicted</code> сопоставляет источник + id эффекта + цель + ключ цепочки + индекс в цепочке. Предсказанный эффект помечается <code>IsConfirmed</code>, пришедшая копия отбрасывается. Серверная реплика остаётся на сущности-держателе, чтобы её время жизни продолжало отслеживаться.</div></div>
+      <div class="step c"><span class="who b">Удаление</span><div>Сервер не подтвердил за 1.5&nbsp;с: <code>DropUnconfirmedPredictedEffectSystem</code> удаляет эффект. Если сервер отклонил скилл, событие кулдауна сразу удаляет всю предсказанную цепочку.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Изменения поменьше</h2>
+    <ul class="plain">
+      <li><b>Стаки только у авторитетных.</b> <code>EffectStackSystem</code> применяет лимиты стаков только там, где мир считает, или для <code>Self</code>-эффектов. Удалённые эффекты просто кладутся в буфер.</li>
+      <li><b>Новая стратегия стака <code>Refresh</code></b> (161 конфиг). Продлевает время жизни существующего эффекта, а не заменяет его, и помечает его для отправки обновления.</li>
+      <li><b>Удалённые архетипы</b> (<code>Remote</code>, <code>RemoteSelf</code>) без компонентов цепочки, поэтому системы цепочек не трогают реплицированные эффекты.</li>
+      <li><code>InterpolateEffectPositionSystem</code> сглаживает движущиеся NetworkObject-эффекты, например снаряды.</li>
+    </ul>
+  </section>
+
+  <div class="pager"><a href="server-input.html">← Ввод на сервере</a><a href="random.html">Синхронизация рандома →</a></div>
+</div>
+<script>
+try { history.scrollRestoration = "manual"; } catch (e) {}
+window.scrollTo(0, 0);
+window.addEventListener("pageshow", function () { window.scrollTo(0, 0); });
+</script>
+</body>
+</html>

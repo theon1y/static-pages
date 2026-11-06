@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Ввод на сервере · Авторитетный сервер</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@500..700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="deck.css">
+</head>
+<body>
+<div class="page">
+  <nav class="nav" aria-label="Страницы">
+    <a class="home" href="index.html">Обзор</a>
+    <a href="why.html">Зачем</a>
+    <a href="before.html">Как было</a>
+    <a href="now.html">Как стало</a>
+    <a href="server-input.html" aria-current="page">Ввод на сервере</a>
+    <a href="effects.html">Цепочки эффектов</a>
+    <a href="random.html">Синхронизация рандома</a>
+    <a href="edge-cases.html">Граничные случаи</a>
+    <a href="problems.html">Решённые проблемы</a>
+  </nav>
+
+  <header class="head">
+    <span class="eyebrow">Подробно · battle/Server/Runtime/Input</span>
+    <h1>Обработка ввода на сервере</h1>
+    <p class="lede">Как сервер превращает поток ненадёжных, иногда опоздавших или перепутанных пакетов ввода ровно в один шаг симуляции на игрока за тик, и как команды становятся действиями.</p>
+  </header>
+
+  <section>
+    <h2>1. Сущность ввода</h2>
+    <p>Каждый клиент создаёт один <b>сетевой объект ввода</b> (<code>InputTemplate</code>) в своей приватной группе доступа. В объекте хранится сетевой id игрока, которым он управляет. На сервере он становится отдельной сущностью рядом с игроком.</p>
+    <div class="flow">
+      <div class="step s"><span class="who s">Создание</span><div><code>ReceivePlayerInputObjectSystem</code> создаёт сущность ввода: <code>PlayerMoveInput</code>, <code>PlayerTargetMoveInput</code>, <code>PlayerCommand</code> (выключен), буфер <code>PlayerInputHistory</code> и <code>TargetBattleObject</code> с id игрока.</div></div>
+      <div class="step s"><span class="who s">Привязка</span><div><code>ResolvePlayerInputTargetSystem</code> <b>каждый кадр</b> резолвит этот id в сущность и записывает <code>PlayerReference</code>. Игрок может прийти позже объекта ввода или пересоздаться при респауне или реконнекте — привязка последует за ним.</div></div>
+      <div class="step s"><span class="who s">Сохранение</span><div>Объект ввода принадлежит участнику и переживает дисконнект. При реконнекте клиент получает свой объект ввода обратно через <code>ReceiveSelfPlayerInputObjectSystem</code> и продолжает писать в него.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Приём пакетов</h2>
+    <p>Клиент каждый тик отправляет <code>NetworkPlayerInput</code> по ненадёжному неупорядоченному каналу. В каждом пакете <i>вся</i> неподтверждённая история: только изменения плюс текущее движение на последнем тике.</p>
+<pre><code>// ReceivePlayerInputSystem
+lastTick = packet.History[^1].Tick
+if (buffer.Last.Tick &gt; lastTick) return;   // старый пакет пришёл после нового: игнорируем
+buffer.Overwrite(packet.History);           // новый пакет — надмножество старых</code></pre>
+    <p>Сливать ничего не нужно. Последний пакет уже содержит всё неподтверждённое, поэтому потерянный или перепутанный пакет ничего не стоит, пока приходит следующий. Клиент обрезает историю, когда её подтверждает <code>PlayerServerPosition.ClientInputTick</code>.</p>
+  </section>
+
+  <section>
+    <h2>3. Один шаг на серверный тик: <code>ApplyPlayerInputSystem</code></h2>
+    <p>Работает в <code>FixedStepSimulationSystemGroup</code> до намерения движения, прерывания движением и группы действий. Для каждого игрока хранит <code>PlayerTicks</code>:</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Поле</th><th>Смысл</th></tr></thead>
+      <tbody>
+        <tr><td><code>SimulatedTick</code></td><td>Клиентский тик, которому сейчас соответствует серверное состояние игрока. Отправляется обратно вместе с позицией.</td></tr>
+        <tr><td><code>ClientInputTick</code></td><td>Последний клиентский тик, чей ввод применён. Никогда не опережает <code>SimulatedTick</code>. Подтверждает историю клиенту.</td></tr>
+        <tr><td><code>JitterBuffer</code></td><td>Сколько тиков ввода придерживается во время простоя, чтобы у следующего действия ввод был наготове. От 0 до 4.</td></tr>
+        <tr><td><code>JitterBufferChangeTick</code></td><td>Когда буфер менялся последний раз. Нужен для его уменьшения.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Продвижение</h3>
+    <div class="flow">
+      <div class="step n"><span class="who n">Затухание</span><div>Если буфер &gt; 0 и не менялся 5&nbsp;с (150 тиков), уменьшить его на один. Соединение стабильно, задержка возвращается вниз.</div></div>
+      <div class="step n"><span class="who n">Опоздавший ввод</span><div><code>ClientInputTick = clamp(lastReceived, ClientInputTick, SimulatedTick)</code>. Ввод, пришедший для уже экстраполированных тиков, применяется сейчас, а не теряется.</div></div>
+      <div class="step s"><span class="who g">Простой</span><div>Игрок простаивает, а следующий непустой ввод впереди: перепрыгнуть <code>SimulatedTick</code> на <code>min(activeTick, lastReceived − JitterBuffer)</code>. Так лаг сбрасывается без симуляции пустых тиков, а ввод на размер буфера остаётся в очереди.</div></div>
+      <div class="step s"><span class="who s">Обычно</span><div>Ввод на следующий тик пришёл: <code>SimulatedTick + 1</code>, <code>ClientInputTick</code> идёт следом.</div></div>
+      <div class="step s"><span class="who b">Голодание</span><div>Игрок активен, а ввода на следующий тик нет: всё равно <code>SimulatedTick + 1</code> с экстраполяцией последнего движения. <code>ClientInputTick</code> отстаёт, буфер растёт на один (максимум 4), тик изменения сбрасывается.</div></div>
+    </div>
+    <p><b>Простой</b> — это когда нет идущего действия, нет ожидающей команды, нет живой цепочки от собственного действия игрока (<code>EffectChainKey.ActionTick &gt; 0</code>), стик в мёртвой зоне (сила ≤ 0.1) и нет более новой цели клика. Пропуск тиков в любом из этих состояний сдвинул бы тайминги относительно предсказания клиента.</p>
+
+    <h3>Применение</h3>
+    <p>После продвижения по порядку применяются все записи истории с тиком в <code>(старый ClientInputTick, новый ClientInputTick]</code>. Когда сервер догоняет, за один серверный шаг может примениться несколько тиков:</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Запись</th><th>Что делает на сервере</th></tr></thead>
+      <tbody>
+        <tr><td><code>Move</code></td><td>Перезаписывает <code>PlayerMoveInput { Direction, Force, StartTick }</code>.</td></tr>
+        <tr><td><code>TargetMove</code></td><td>Перезаписывает <code>PlayerTargetMoveInput { Position, StopDistance, Force, StartTick }</code>.</td></tr>
+        <tr><td><code>Command</code></td><td>Включает <code>PlayerCommand { Action, Tick, SkillId | InteractionId | SeriesAttackType }</code>. Резолвит сетевой id цели в сущность и пишет <code>ActionTarget</code> и на игрока, и на ввод. Для атак сбрасывает <code>AttackCooldown</code>, потому что тайминг серии на клиенте мог разойтись с серверным.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Тик без записи повторяет предыдущий ввод, так как записываются только изменения.</p>
+  </section>
+
+  <section>
+    <h2>4. Ввод в движение</h2>
+    <ul class="plain">
+      <li><code>DisableTargetIntentByMoveInputSystem</code>: активное движение стиком отменяет цель клика, если игрок не управляется аггро.</li>
+      <li><code>PlayerMoveIntentSystem</code>: побеждает ввод с более новым <code>StartTick</code>. Стик становится <code>MoveIntent</code> с силой 0 или 1 по мёртвой зоне, цель — <code>TargetIntent</code>. Пропускается, если игрок мёртв или под контроль-блокером.</li>
+      <li><code>StopOnActionSystem</code> обнуляет движение при входе действия в подготовку и во время каста, так же как на клиенте.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. Команды в действия</h2>
+    <div class="flow">
+      <div class="step s"><span class="who s">Фильтр</span><div><code>ApplyPlayerCommandSystem</code> (первая в <code>ActionFixedStepSystemGroup</code>). Если идёт действие и эта команда не может его прервать (<code>InterruptUtils.IsInterruptedByRequest</code>), команда отбрасывается.</div></div>
+      <div class="step s"><span class="who s">Запрос</span><div>Собирает <code>ActionRequest</code> с тиком команды:
+        <small><b>Скилл</b>: <code>SkillUtils.RequestSkill</code>, который заодно выбирает нужный скиллу пресет оружия. <b>Взаимодействие</b>: <code>InteractActionUtils.RequestInteraction</code>. <b>Атака</b>: <code>AttackActionUtils.RequestAttack</code> с таймингами серии, масштабированными скоростью атаки.</small></div></div>
+      <div class="step s"><span class="who s">Старт</span><div><code>StartActionSystem</code> проверяет и запускает <code>CurrentAction</code>. <code>ActionTimerSystem</code> и <code>EndActionSystem</code> ведут подготовку → каст → завершение.</div></div>
+      <div class="step s"><span class="who b">Отказ</span><div><code>SendRejectedSkillCooldownSystem</code>: если действие по команде скилла не стартовало на её тике, отправляется <code>SkillCooldownNetworkEvent</code> с реальным серверным кулдауном. <code>SendInterruptedSkillCooldownSystem</code> делает то же для скилла, прерванного на подготовке.</div></div>
+      <div class="step s"><span class="who n">Поглощение</span><div><code>ConsumePlayerCommandSystem</code> выключает <code>PlayerCommand</code> и <code>ActionRequest</code> игрока. Каждая команда применяется один раз.</div></div>
+    </div>
+    <p>Запрос несёт клиентский тик, поэтому действие, его броски рандома и его цепочки используют тот же <code>action.Tick</code>, что и предсказание клиента. См. <a href="random.html" style="color:var(--accent)">Синхронизация рандома</a>.</p>
+  </section>
+
+  <section>
+    <h2>6. Ответ клиенту и побочные каналы</h2>
+    <ul class="plain">
+      <li><code>SendPlayerPositionSystem</code> отправляет <code>PlayerServerPosition { Position, SimulatedTick, ClientInputTick }</code> только при изменении трансформа или тиков, по ненадёжному упорядоченному каналу.</li>
+      <li>Остальные игроки получают действие через <code>NetworkActionRequest</code>, а позицию — через обычный трансформ.</li>
+      <li>События в объект ввода, не относящиеся к тиковому вводу: <code>PlayerEffectNetworkRequest</code> (сервер создаёт цепочку на игроке, например от расходника) и <code>PlayerResurrectNetworkRequest</code> (сервер создаёт <code>ResurrectRequest</code>).</li>
+    </ul>
+  </section>
+
+  <div class="pager"><a href="now.html">← Как стало</a><a href="effects.html">Цепочки эффектов →</a></div>
+</div>
+<script>
+try { history.scrollRestoration = "manual"; } catch (e) {}
+window.scrollTo(0, 0);
+window.addEventListener("pageshow", function () { window.scrollTo(0, 0); });
+</script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Решённые проблемы · Авторитетный сервер</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@500..700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="deck.css">
+</head>
+<body>
+<div class="page">
+  <nav class="nav" aria-label="Страницы">
+    <a class="home" href="index.html">Обзор</a>
+    <a href="why.html">Зачем</a>
+    <a href="before.html">Как было</a>
+    <a href="now.html">Как стало</a>
+    <a href="server-input.html">Ввод на сервере</a>
+    <a href="effects.html">Цепочки эффектов</a>
+    <a href="random.html">Синхронизация рандома</a>
+    <a href="edge-cases.html">Граничные случаи</a>
+    <a href="problems.html" aria-current="page">Решённые проблемы</a>
+  </nav>
+
+  <header class="head">
+    <span class="eyebrow">Инженерия</span>
+    <h1>Какие проблемы пришлось решить</h1>
+    <p class="lede">Перенос авторитета — это в основном о том, чтобы две симуляции договорились о времени и об идентичности, а потом прибрать за ними, когда не договорились.</p>
+  </header>
+
+  <section>
+    <div class="cols">
+      <div class="card">
+        <h3>Общие часы</h3>
+        <p><code>FixedStepTick</code> на 30&nbsp;Гц на обеих сторонах. Каждый ввод несёт свой тик. Сервер сообщает два тика: <code>SimulatedTick</code> — к какому тику относится его позиция, и <code>ClientInputTick</code> — последний применённый ввод. Первый нужен для сверки, второй для обрезки истории.</p>
+      </div>
+      <div class="card">
+        <h3>Дешёвый и устойчивый к потерям ввод</h3>
+        <p>Записываются только изменения, в 36-байтном union с явной раскладкой. Список на 512 байт вмещает 14 записей. Каждый пакет повторяет все неподтверждённые изменения, поэтому можно использовать ненадёжный канал без потери ввода.</p>
+      </div>
+      <div class="card">
+        <h3>Приватные объекты ввода</h3>
+        <p>Ввод должен попадать на сервер и больше никуда. В Rust-сервер Cheetah добавлены приватные группы доступа на участника (бит <span class="mono">10 + memberId % 50</span>). Их пришлось протянуть через реестр комнат, сервисы матчмейкинга и параметры подключения.</p>
+      </div>
+      <div class="card">
+        <h3>Задержка против плавности</h3>
+        <p>Адаптивный джиттер-буфер: на хорошем соединении он равен нулю и растёт, только когда серверу пришлось экстраполировать. Пропуск тиков в простое сбрасывает накопленный лаг, не задерживая действия.</p>
+      </div>
+      <div class="card">
+        <h3>Идентичность предсказанного</h3>
+        <p>Предсказанное попадание или эффект нужно сопоставить с серверной копией. Для этого понадобились детерминированные ключи: <code>HitKey</code>, <code>EffectChainKey { ActionTick, Index }</code>, <code>EffectInChainIndex</code> и сиды из <code>RandomBaseSeed</code> + тик + индекс.</p>
+      </div>
+      <div class="card">
+        <h3>Уборка неверных предсказаний</h3>
+        <p>У предсказания три исхода: подтверждено (принять или поправить на разницу), явно отклонено (событие кулдауна сбрасывает кулдаун и цепочки) или молча не подтверждено (таймаут 1.5&nbsp;с, затем откат или удаление).</p>
+      </div>
+      <div class="card">
+        <h3>Геймплейный код на сервере</h3>
+        <p>Логика атак, скиллов, взаимодействий, прерываний и воскрешения переехала из <code>battle/Client</code> в <code>battle/Core</code> и перестроена вокруг одного пути через <code>PlayerCommand</code> (<code>ApplyPlayerCommandSystem</code> → <code>StartActionSystem</code> → <code>ActionTimerSystem</code> → <code>EndActionSystem</code>). Что где работает, решают флаги фич (<code>Prediction</code>, <code>CalculationAllowed</code>).</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="pager"><a href="edge-cases.html">← Граничные случаи</a><a href="index.html">К обзору</a></div>
+</div>
+<script>
+try { history.scrollRestoration = "manual"; } catch (e) {}
+window.scrollTo(0, 0);
+window.addEventListener("pageshow", function () { window.scrollTo(0, 0); });
+</script>
+</body>
+</html>

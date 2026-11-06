@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Граничные случаи · Авторитетный сервер</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@500..700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="deck.css">
+<style>
+  td .who { margin-right: 6px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; color: var(--muted); font-size: .9rem; align-items: center; }
+  .who.w { color: var(--server); background: var(--server-soft); }
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="nav" aria-label="Страницы">
+    <a class="home" href="index.html">Обзор</a>
+    <a href="why.html">Зачем</a>
+    <a href="before.html">Как было</a>
+    <a href="now.html">Как стало</a>
+    <a href="server-input.html">Ввод на сервере</a>
+    <a href="effects.html">Цепочки эффектов</a>
+    <a href="random.html">Синхронизация рандома</a>
+    <a href="edge-cases.html" aria-current="page">Граничные случаи</a>
+    <a href="problems.html">Решённые проблемы</a>
+  </nav>
+
+  <header class="head">
+    <span class="eyebrow">Каждая модель сама по себе</span>
+    <h1>Граничные случаи</h1>
+    <p class="lede">Для каждой ситуации — как в ней ведёт себя старая модель и как новая. Каждая ячейка описывает только свою модель.</p>
+    <div class="legend"><span><span class="who g">Хорошо</span> обрабатывается корректно</span><span><span class="who w">Компромисс</span> работает, но с издержками</span><span><span class="who b">Плохо</span> неверно или эксплуатируемо</span></div>
+  </header>
+
+  <section>
+    <h2>Сетевые условия</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Случай</th><th>Было</th><th>Стало</th></tr></thead>
+      <tbody>
+        <tr><td>Потеря пакета</td>
+          <td><span class="who w">Компромисс</span>Трансформ ненадёжный, следующее обновление его перезаписывает, остальные видят небольшой скачок. Поля действия — отдельные структуры, поэтому удалённый клиент может кадр видеть действие без цели или параметров.</td>
+          <td><span class="who g">Хорошо</span>Каждый пакет ввода повторяет все неподтверждённые изменения, следующий пакет закрывает пропуск. Состояние действия для удалённых — один <code>NetworkActionRequest</code>.</td></tr>
+        <tr><td>Ввод приходит с опозданием или неравномерно</td>
+          <td><span class="who g">Хорошо</span>Своё движение мгновенное, клиент двигает себя сам. Остальные видят то, что пришло.</td>
+          <td><span class="who w">Компромисс</span>Сервер экстраполирует последний ввод и применяет опоздавший, когда тот приходит. Джиттер-буфер растёт до 4 тиков, добавляя задержку, и уменьшается после 5&nbsp;с стабильности.</td></tr>
+        <tr><td>Лаг-спайк, пока игрок стоит</td>
+          <td><span class="who g">Хорошо</span>Догонять нечего.</td>
+          <td><span class="who g">Хорошо</span>Пустые тики простоя пропускаются, сервер догоняет без постоянной задержки.</td></tr>
+        <tr><td>Лаг-спайк во время действия или своей цепочки</td>
+          <td><span class="who g">Хорошо</span>Действие выполняется на клиенте, сервер получает результаты позже.</td>
+          <td><span class="who w">Компромисс</span>Без пропусков. Тики симулируются по одному, чтобы тайминги совпали с предсказанием, и серверный игрок отстаёт на длину спайка.</td></tr>
+        <tr><td>Дисконнект / реконнект</td>
+          <td><span class="who b">Плохо</span><code>PausedUnitsControlSystem</code> передаёт <code>Self</code> серверу при отключении и обратно при возвращении. Две симуляции по очереди владеют состоянием, о котором никогда не договаривались.</td>
+          <td><span class="who g">Хорошо</span>Игроком всегда владеет сервер. Объект ввода остаётся на сервере, и <code>ReceiveSelfPlayerInputObjectSystem</code> заново привязывает его при реконнекте.</td></tr>
+        <tr><td>Кто может прочитать ввод игрока</td>
+          <td><span class="who g">Хорошо</span>Потока ввода нет.</td>
+          <td><span class="who g">Хорошо</span>Объект ввода в приватной группе доступа участника, его читают только владелец и сервер.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Геймплей</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Случай</th><th>Было</th><th>Стало</th></tr></thead>
+      <tbody>
+        <tr><td>Модифицированный клиент (скорость, кулдауны, урон)</td>
+          <td><span class="who b">Плохо</span>Позиция, тайминги, кулдауны и значения урона приходят от клиента. Античит следит только за отдельными значениями, например здоровьем.</td>
+          <td><span class="who g">Хорошо</span>Всё это считает сервер. Модифицированный клиент меняет только своё предсказание, которое потом исправляется.</td></tr>
+        <tr><td>Позиция своего игрока</td>
+          <td><span class="who g">Хорошо</span>Всегда там, где игрок ожидает, потому что клиент — истина.</td>
+          <td><span class="who w">Компромисс</span>Предсказывается. Ошибка больше 0.1&nbsp;м исправляется смещением текущей позиции и всех последующих предсказаний, что может выглядеть как небольшой рывок.</td></tr>
+        <tr><td>Телепорт / варп</td>
+          <td><span class="who g">Хорошо</span>Локально и мгновенно.</td>
+          <td><span class="who g">Хорошо</span>Буфер предсказанных позиций очищается, телепорт не считается ошибкой.</td></tr>
+        <tr><td>Числа урона</td>
+          <td><span class="who b">Плохо</span>Клиент отправляет итоговые значения урона, сервер их принимает.</td>
+          <td><span class="who g">Хорошо</span>Показываются сразу по предсказанию и сопоставляются с серверным результатом по <code>HitKey</code>. Исправляются, если расхождение больше 5%, откатываются, если не подтверждены за 1.5&nbsp;с.</td></tr>
+        <tr><td>Действие, которое сервер бы не разрешил (рассинхрон кулдауна, блокер, прерывание)</td>
+          <td><span class="who b">Плохо</span>Решает клиент, сервер не может отказать.</td>
+          <td><span class="who g">Хорошо</span><code>SkillCooldownNetworkEvent</code> сбрасывает кулдаун на клиенте и удаляет предсказанные цепочки этого тика.</td></tr>
+        <tr><td>Дрейф кулдауна атаки</td>
+          <td><span class="who g">Хорошо</span>Один таймер на клиенте.</td>
+          <td><span class="who w">Компромисс</span>Сервер сбрасывает <code>AttackCooldown</code> при приходе команды атаки, поэтому внутри серии побеждает тайминг клиента и сервер ему доверяет.</td></tr>
+        <tr><td>Цель на границе дистанции</td>
+          <td><span class="who g">Хорошо</span>Проверяется один раз, локально.</td>
+          <td><span class="who w">Компромисс</span>Клиент проверяет точно. Сервер допускает лишние 2&nbsp;м (<code>SyncSettings.AllowedDistanceError</code>) на джиттер.</td></tr>
+        <tr><td>Цель взаимодействия без сетевого id</td>
+          <td><span class="who g">Хорошо</span>Взаимодействия выполняются локально.</td>
+          <td><span class="who g">Хорошо</span>Команда ссылается на сетевой id <code>InteractableObjectOwner</code>.</td></tr>
+        <tr><td>Хаб</td>
+          <td><span class="who g">Хорошо</span>Симулирует клиент.</td>
+          <td><span class="who w">Компромисс</span>По-прежнему симулирует клиент (<code>CalculationAllowed</code>, без предсказания), потому что в хабе нет серверной симуляции.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Эффекты</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Случай</th><th>Было</th><th>Стало</th></tr></thead>
+      <tbody>
+        <tr><td>Баффы / дебаффы на чужих экранах</td>
+          <td><span class="who b">Плохо</span>Каждый клиент заново выполняет таргетинг цепочки по своим позициям, поэтому станы, замедления и баффы могут лечь на разных юнитов на разных экранах. Урон согласован, потому что приходит от владельца.</td>
+          <td><span class="who g">Хорошо</span>Таргетинг только на сервере. Удалённые клиенты получают готовые эффекты.</td></tr>
+        <tr><td>Реплика источника или цели ещё не пришла</td>
+          <td><span class="who w">Компромисс</span>Цепочка ждёт с <code>EffectChainPendingDependency</code> и удаляется через 3&nbsp;с.</td>
+          <td><span class="who g">Хорошо</span>Эффект ждёт с <code>PendingEffectData</code>, пока не появится цель.</td></tr>
+        <tr><td>Поздний вход во время эффекта</td>
+          <td><span class="who b">Плохо</span><code>Recreate</code> / <code>Rewind</code> / <code>CreateAndRewind</code>. Броски рандома расходятся с исходным прогоном, снаряды, VFX и пропущенные тики не перематываются.</td>
+          <td><span class="who g">Хорошо</span>NetworkObject-эффекты приходят с уже выброшенными результатами и создаются с возрастом <code>serverTime − StartServerTime</code>.</td></tr>
+        <tr><td>Свой эффект виден до подтверждения сервером</td>
+          <td><span class="who g">Хорошо</span>Эффект владельца и есть настоящий.</td>
+          <td><span class="who g">Хорошо</span>Предсказывается сразу. Серверная копия принимается по ключу цепочки и индексу в цепочке.</td></tr>
+        <tr><td>Предсказание, которое сервер так и не подтвердил</td>
+          <td><span class="who g">Хорошо</span>Подтверждать нечего.</td>
+          <td><span class="who w">Компромисс</span>Удаляется через 1.5&nbsp;с, если синхронизация не <code>None</code>. При очень высоком пинге верный эффект может удалиться и затем снова прийти с сервера.</td></tr>
+        <tr><td>Лимиты стаков</td>
+          <td><span class="who b">Плохо</span>Каждый клиент стакает свои копии независимо.</td>
+          <td><span class="who g">Хорошо</span>Стаки считаются только для авторитетных или <code>Self</code>-эффектов. Удалённые копии следуют за ними.</td></tr>
+        <tr><td>Обновление долгого баффа</td>
+          <td><span class="who w">Компромисс</span>Цепочка отправляется и прогоняется заново.</td>
+          <td><span class="who g">Хорошо</span>Стратегия <code>Refresh</code> продлевает существующий эффект, обновление отправляется, только когда время окончания сдвигается больше чем на половину длительности.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <div class="pager"><a href="random.html">← Синхронизация рандома</a><a href="problems.html">Решённые проблемы →</a></div>
+</div>
+<script>
+try { history.scrollRestoration = "manual"; } catch (e) {}
+window.scrollTo(0, 0);
+window.addEventListener("pageshow", function () { window.scrollTo(0, 0); });
+</script>
+</body>
+</html>

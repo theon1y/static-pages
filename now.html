@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Как стало · Авторитетный сервер</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@500..700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="deck.css">
+</head>
+<body>
+<div class="page">
+  <nav class="nav" aria-label="Страницы">
+    <a class="home" href="index.html">Обзор</a>
+    <a href="why.html">Зачем</a>
+    <a href="before.html">Как было</a>
+    <a href="now.html" aria-current="page">Как стало</a>
+    <a href="server-input.html">Ввод на сервере</a>
+    <a href="effects.html">Цепочки эффектов</a>
+    <a href="random.html">Синхронизация рандома</a>
+    <a href="edge-cases.html">Граничные случаи</a>
+    <a href="problems.html">Решённые проблемы</a>
+  </nav>
+
+  <header class="head">
+    <span class="eyebrow">Стало · авторитетный сервер, предсказание на клиенте</span>
+    <h1>Как стало</h1>
+    <p class="lede">Обе стороны идут одним фиксированным шагом: <code>FixedStepTick</code>, 30 тиков в секунду. Клиент отправляет ввод с номером своего тика. Сервер симулирует этот тик и сообщает, какому тику соответствует его состояние.</p>
+  </header>
+
+  <section>
+    <h2>Какой мир что симулирует</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Контекст</th><th>Фичи</th><th>Поведение</th></tr></thead>
+      <tbody>
+        <tr><td>Выделенный сервер (UDS)</td><td><code>CalculationAllowed</code></td><td>Симулирует всех игроков и AI-юнитов. Игроки создаются из <code>Self</code>-префаба.</td></tr>
+        <tr><td>Клиент в рейде / лабиринте / PvP</td><td><code>Prediction</code> (+ сетевые системы)</td><td>Предсказывает только своего игрока. Остальные игроки — интерполируемые реплики.</td></tr>
+        <tr><td>Клиент в хабе</td><td><code>Network</code> + <code>CalculationAllowed</code></td><td>В хабе нет серверной симуляции, поэтому клиент остаётся авторитетным.</td></tr>
+        <tr><td>Локальное соло / без сервера</td><td><code>CalculationAllowed</code> (+ <code>Network</code> при записи реплея)</td><td>Полностью локально, как раньше.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Задаётся в <code>CalculationTagController</code>. Системы фильтруются через <code>WorldSystemFilter</code>, поэтому большая часть геймплейного кода переехала из <code>battle/Client</code> в <code>battle/Core</code> и без изменений работает на обеих сторонах.</p>
+  </section>
+
+  <section>
+    <h2>Один тик от начала до конца</h2>
+    <div class="flow">
+      <div class="step c"><span class="who c">Клиент</span><div><b>Запись.</b> <code>SendPlayerInputSystem</code> добавляет запись в историю только при изменении ввода: <code>Move</code>, <code>TargetMove</code> или <code>Command</code> (атака / скилл / взаимодействие с тиком и целью).</div></div>
+      <div class="step c"><span class="who c">Клиент</span><div><b>Предсказание.</b> Те же системы из Core работают локально на <code>Self</code>-игроке. Позиция на этот тик записывается в <code>PredictedPositionElement</code>, до 90 тиков (3&nbsp;с).</div></div>
+      <div class="step n"><span class="who n">Сеть</span><div><b>Отправка.</b> Вся неподтверждённая история плюс текущее движение, каждый тик, по <i>ненадёжному неупорядоченному</i> каналу. <code>FixedList512Bytes</code> вмещает 14 записей по 36 байт. Потерянный пакет покрывается следующим.<small>Пакет пишется в <b>объект ввода</b> участника в приватной группе доступа, поэтому его видят только владелец и сервер.</small></div></div>
+      <div class="step s"><span class="who s">Сервер</span><div><b>Применение.</b> <code>ApplyPlayerInputSystem</code> продвигает <code>PlayerTicks</code> каждого игрока на один шаг (см. ниже) и применяет все записи истории до нового клиентского тика. Команда превращается в <code>PlayerCommand</code> + <code>ActionTarget</code>, сетевой id резолвится в сущность.</div></div>
+      <div class="step s"><span class="who s">Сервер</span><div><b>Симуляция.</b> Движение, действия, цепочки, урон. Всё авторитетно.</div></div>
+      <div class="step s"><span class="who s">Сервер</span><div><b>Ответ.</b> <code>SendPlayerPositionSystem</code> → <code>PlayerServerPosition { Position, SimulatedTick, ClientInputTick }</code> по ненадёжному упорядоченному каналу.</div></div>
+      <div class="step c"><span class="who c">Клиент</span><div><b>Сверка.</b> Удаляет историю ввода, подтверждённую <code>ClientInputTick</code>. Находит предсказание для <code>SimulatedTick</code>. Если расхождение больше 0.1&nbsp;м, сдвигает текущую позицию и все последующие предсказания на величину ошибки.<small>Коррекция — это смещение, без отката и пересимуляции.</small></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Продвижение серверного тика: джиттер-буфер</h2>
+    <p><a href="server-input.html" style="color:var(--accent)">Полный конвейер ввода на сервере →</a></p>
+    <p>На каждом серверном тике сервер выбирает для каждого игрока один из трёх шагов. Буфер растёт на один тик каждый раз, когда приходится экстраполировать, максимум до <b>4 тиков</b>. После <b>5&nbsp;секунд</b> без экстраполяции он уменьшается на один тик. На стабильном соединении он остаётся равным 0 и не добавляет задержки.</p>
+    <div class="card" style="gap:14px">
+      <div class="ticks"><span class="ticklabel">Ввод пришёл</span><span class="tick in">41</span><span class="tick in">42</span><span class="tick in">43</span><span class="tick sim">→43</span><span style="color:var(--muted);font-size:13px;font-family:var(--f-body)">Ввод на следующий тик уже есть — симулируем +1.</span></div>
+      <div class="ticks"><span class="ticklabel">Ввод опоздал</span><span class="tick in">41</span><span class="tick x">42?</span><span class="tick sim">→42</span><span style="color:var(--muted);font-size:13px;font-family:var(--f-body)">Экстраполируем последний ввод и растим буфер. Когда 42 придёт с опозданием, он будет применён.</span></div>
+      <div class="ticks"><span class="ticklabel">Простой + лаг</span><span class="tick">40</span><span class="tick skip">41</span><span class="tick skip">42</span><span class="tick skip">43</span><span class="tick in">44</span><span class="tick sim">→44</span><span style="color:var(--muted);font-size:13px;font-family:var(--f-body)">Пропускаем пустой ввод, чтобы догнать, оставляя тики буфера в очереди.</span></div>
+    </div>
+    <p>Игрок <b>не простаивает</b>, пока идёт действие, ждёт команда или жива цепочка от его собственного действия (<code>EffectChainKey.ActionTick &gt; 0</code>). Пропуск тиков в этот момент сдвинул бы такие цепочки относительно предсказания клиента.</p>
+  </section>
+
+  <section>
+    <h2>Что ещё предсказывает клиент и как это исправляется</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>Урон</h3>
+        <p>Предсказанные попадания записываются в <code>PredictedHitElement</code> с <code>HitKey</code>. Когда серверный <code>DamageNetworkEvent</code> приходит с тем же ключом, клиент корректирует здоровье на разницу, если она больше 5%. Предсказание без совпадения в течение 1.5&nbsp;с откатывается.</p>
+      </div>
+      <div class="card">
+        <h3>Кулдауны скиллов</h3>
+        <p>Если сервер отклонил команду скилла или прервал его на подготовке, он отправляет <code>SkillCooldownNetworkEvent { SkillId, Tick, Remaining }</code>. Клиент перезаписывает кулдаун и удаляет предсказанные цепочки этого тика действия.</p>
+      </div>
+      <div class="card">
+        <h3>Телепорты</h3>
+        <p><code>DropPredictionOnWarpSystem</code> очищает предсказанные позиции при <code>WarpRequest</code>. Иначе телепорт выглядел бы как огромная ошибка предсказания.</p>
+      </div>
+      <div class="card">
+        <h3>Плавная отрисовка</h3>
+        <p><code>InterpolateFixedStepPositionSystem</code> интерполирует между предыдущей и текущей позициями фиксированного шага внутри кадра. Скачки больше 1&nbsp;м применяются сразу.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Другие игроки и побочные каналы</h2>
+    <ul class="plain">
+      <li>Удалённые игроки видят один <code>NetworkActionRequest</code>: действие, длительности, тик, цель и типизированные параметры в одной структуре. <code>Self</code>-юниты (предсказываемые) его игнорируют.</li>
+      <li>Запросы, не привязанные к тику, идут событиями в объект ввода: <code>PlayerEffectNetworkRequest</code> (расходники и подобное, цепочку создаёт сервер) и <code>PlayerResurrectNetworkRequest</code>.</li>
+      <li>Проверки дистанции на сервере допускают <code>SyncSettings.AllowedDistanceError = 2</code> м на джиттер. Клиент проверяет точно в <code>MoveToActionTargetSystem</code>.</li>
+    </ul>
+  </section>
+
+  <div class="pager"><a href="before.html">← Как было</a><a href="server-input.html">Ввод на сервере →</a></div>
+</div>
+<script>
+try { history.scrollRestoration = "manual"; } catch (e) {}
+window.scrollTo(0, 0);
+window.addEventListener("pageshow", function () { window.scrollTo(0, 0); });
+</script>
+</body>
+</html>

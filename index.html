@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Авторитетный сервер</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@500..700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="deck.css">
+</head>
+<body>
+
+<div class="page" lang="ru">
+  <nav class="nav" aria-label="Страницы">
+    <a class="home" href="index.html" aria-current="page">Обзор</a>
+    <a href="why.html">Зачем</a>
+    <a href="before.html">Как было</a>
+    <a href="now.html">Как стало</a>
+    <a href="server-input.html">Ввод на сервере</a>
+    <a href="effects.html">Цепочки эффектов</a>
+    <a href="random.html">Синхронизация рандома</a>
+    <a href="edge-cases.html">Граничные случаи</a>
+    <a href="problems.html">Решённые проблемы</a>
+  </nav>
+
+  <header class="head">
+    <span class="eyebrow">Сеть в боёвке · ветка authorative-server</span>
+    <h1>Переносим симуляцию игрока на сервер</h1>
+    <p class="lede">До сих пор клиент владел своим игроком: сам двигался, атаковал, кастовал скиллы, наносил урон и создавал цепочки эффектов, а потом сообщал серверу, что произошло. После переработки клиент отправляет ввод, сервер симулирует игрока, а клиент предсказывает результат и корректирует себя.</p>
+  </header>
+
+  <section>
+    <div class="cols">
+      <div class="card">
+        <span class="mono" style="color:var(--muted)">1674c76c212 · 1 окт.</span>
+        <h3>Движение и действия игрока авторитетны на сервере</h3>
+        <p>Поток ввода, тиковая симуляция на сервере, предсказание и сверка на клиенте для позиции, урона и кулдаунов.</p>
+        <div class="cols" style="grid-template-columns:repeat(2,1fr);gap:8px">
+          <div class="stat"><b>1290</b><span>файлов изменено</span></div>
+          <div class="stat"><b>+14.6k / −13.5k</b><span>строк</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <span class="mono" style="color:var(--muted)">9a350515203 · 29 окт. · WIP</span>
+        <h3>Переработана синхронизация цепочек эффектов</h3>
+        <p>Цепочки больше не реплицируются. Их запускает только авторитетный мир, а получившиеся эффекты синхронизируются по одному.</p>
+        <div class="cols" style="grid-template-columns:repeat(2,1fr);gap:8px">
+          <div class="stat"><b>1204</b><span>файла изменено</span></div>
+          <div class="stat"><b>+5.3k / −4.5k</b><span>строк</span></div>
+        </div>
+      </div>
+    </div>
+    <p style="color:var(--muted);font-size:.9rem">Большая часть файлов — конфиги: у ~217 конфигов цепочек убраны <code>SyncStrategy</code>/<code>LateJoinMode</code>, у ~635 конфигов эффектов появилась своя <code>SyncStrategy</code>.</p>
+  </section>
+
+  <section>
+    <h2>Коротко</h2>
+    <div class="flow">
+      <div class="step c"><span class="who c">Было</span><div>Клиент симулирует своего игрока и <b>отправляет результаты</b>: трансформ, запросы действий, урон, создание цепочек. Сервер в основном пересылает и наблюдает.</div></div>
+      <div class="step s"><span class="who s">Стало</span><div>Клиент отправляет <b>ввод на каждый тик (30&nbsp;Гц)</b>. Сервер симулирует всех игроков. Клиент предсказывает своего игрока и сверяется с серверным состоянием по номеру тика.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Содержание</h2>
+    <div class="cols">
+      <a class="card" href="why.html" style="text-decoration:none;color:inherit"><h3>Зачем это понадобилось</h3><p style="color:var(--muted)">Источник истины, доверие к клиенту, расхождения между экранами.</p></a>
+      <a class="card" href="before.html" style="text-decoration:none;color:inherit"><h3>Как было</h3><p style="color:var(--muted)">Игрок принадлежит клиенту, репликация на уровне цепочек.</p></a>
+      <a class="card" href="now.html" style="text-decoration:none;color:inherit"><h3>Как стало</h3><p style="color:var(--muted)">История ввода, серверные тики, джиттер-буфер, предсказание.</p></a>
+      <a class="card" href="server-input.html" style="text-decoration:none;color:inherit"><h3>Ввод на сервере</h3><p style="color:var(--muted)">Сущность ввода, продвижение тиков, команды в действия.</p></a>
+      <a class="card" href="effects.html" style="text-decoration:none;color:inherit"><h3>Цепочки эффектов</h3><p style="color:var(--muted)">От реплицируемых цепочек к реплицируемым эффектам.</p></a>
+      <a class="card" href="random.html" style="text-decoration:none;color:inherit"><h3>Синхронизация рандома</h3><p style="color:var(--muted)">От сквозного потока к броскам по ключу тика.</p></a>
+      <a class="card" href="edge-cases.html" style="text-decoration:none;color:inherit"><h3>Граничные случаи</h3><p style="color:var(--muted)">Как каждая модель ведёт себя в сложных ситуациях.</p></a>
+      <a class="card" href="problems.html" style="text-decoration:none;color:inherit"><h3>Решённые проблемы</h3><p style="color:var(--muted)">Самые сложные части переработки.</p></a>
+    </div>
+  </section>
+
+  <div class="pager"><span></span><a href="why.html">Зачем это понадобилось →</a></div>
+</div>
+<script>
+try { history.scrollRestoration = "manual"; } catch (e) {}
+window.scrollTo(0, 0);
+window.addEventListener("pageshow", function () { window.scrollTo(0, 0); });
+</script>
+</body>
+</html>

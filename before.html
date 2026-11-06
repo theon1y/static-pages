@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Как было · Авторитетный сервер</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@500..700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="deck.css">
+</head>
+<body>
+<div class="page">
+  <nav class="nav" aria-label="Страницы">
+    <a class="home" href="index.html">Обзор</a>
+    <a href="why.html">Зачем</a>
+    <a href="before.html" aria-current="page">Как было</a>
+    <a href="now.html">Как стало</a>
+    <a href="server-input.html">Ввод на сервере</a>
+    <a href="effects.html">Цепочки эффектов</a>
+    <a href="random.html">Синхронизация рандома</a>
+    <a href="edge-cases.html">Граничные случаи</a>
+    <a href="problems.html">Решённые проблемы</a>
+  </nav>
+
+  <header class="head">
+    <span class="eyebrow">Было · авторитетный клиент</span>
+    <h1>Как было</h1>
+    <p class="lede">Каждый клиент владел сущностью своего игрока с <code>Self</code> и полностью её симулировал. Сервер вёл AI-юнитов и реплицировал то, что сообщали клиенты.</p>
+  </header>
+
+  <section>
+    <h2>Каст скилла от начала до конца</h2>
+    <div class="flow">
+      <div class="step c"><span class="who c">Клиент</span><div>Ввод → <code>PlayerInputSkillActionRequestSystem</code> → <code>PlayerRequestSkillActionSystem</code> выбирает действие, локально проверяет дистанцию и кулдаун.<small>Вся логика запросов и выбора действий жила в <code>battle/Client</code>.</small></div></div>
+      <div class="step c"><span class="who c">Клиент</span><div>Подготовка → каст выполняются локально. Цепочка создаётся на клиенте: он бросает сид рандома и выполняет таргетинг.</div></div>
+      <div class="step n"><span class="who n">Сеть</span><div>Отправляются отдельные поля: <code>LocalTransform</code>, <code>ActionRequest</code>, <code>ActionTarget</code>, <code>SkillActionParameters</code>, а также <code>CreateEffectChainNetworkEvent</code> и события урона.<small>Отдельные структуры могут прийти в разных кадрах.</small></div></div>
+      <div class="step s"><span class="who s">Сервер</span><div>Применяет полученный трансформ и действие. Пересоздаёт цепочку из события и рассылает состояние дальше. Мониторы античита следят за здоровьем и подобными значениями.</div></div>
+      <div class="step c"><span class="who n">Остальные</span><div>Каждый удалённый клиент пересоздаёт цепочку с тем же сидом и выполняет свой таргетинг по своему представлению о мире.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Кто чем владел</h2>
+    <div class="cols">
+      <div class="card">
+        <span class="who c">Клиент</span>
+        <ul class="plain">
+          <li>Позиция своего игрока, отправляемая через <code>SendTransformSystem</code> по ненадёжному упорядоченному каналу</li>
+          <li>Выбор, подготовка и каст атак, скиллов и взаимодействий</li>
+          <li>Урон, наносимый своим игроком</li>
+          <li>Цепочки эффектов, созданные своим игроком</li>
+          <li>Взаимодействия: добыча, сундуки, выходы, смена класса, переключение PvP</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="who s">Сервер</span>
+        <ul class="plain">
+          <li>AI-юниты и объекты комнаты</li>
+          <li>Игроки отключившихся участников, через <code>PausedUnitsControlSystem</code></li>
+          <li>Мониторы античита: таймеры, которые помечают читеров и исправляют состояние</li>
+          <li>Пересылка объектов и событий всех участников</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Репликация на уровне цепочек</h2>
+    <p>Каждый конфиг цепочки выбирал способ синхронизации:</p>
+    <div class="tbl"><table>
+      <thead><tr><th>SyncStrategy</th><th>Что отправлялось</th><th>Где использовалось</th></tr></thead>
+      <tbody>
+        <tr><td><code>Event</code></td><td>Одно <code>CreateEffectChainNetworkEvent</code> с id цепочки, источником, целью, сидом, позицией, критом и типом урона. Получатели заново прогоняют всю цепочку.</td><td>~200 цепочек (по умолчанию)</td></tr>
+        <tr><td><code>NetworkObject</code></td><td>Сетевой объект цепочки со <code>StartServerTime</code> и поддержкой позднего входа через <code>LateJoinMode</code></td><td>17 цепочек</td></tr>
+        <tr><td><code>None</code></td><td>Только локально</td><td>остальные</td></tr>
+      </tbody>
+    </table></div>
+    <p>Если цепочка приходила раньше реплики своего источника или цели, она откладывалась с <code>EffectChainPendingDependency</code>. Если зависимость не разрешалась за 3&nbsp;секунды, цепочка удалялась.</p>
+  </section>
+
+  <div class="pager"><a href="why.html">← Зачем</a><a href="now.html">Как стало →</a></div>
+</div>
+<script>
+try { history.scrollRestoration = "manual"; } catch (e) {}
+window.scrollTo(0, 0);
+window.addEventListener("pageshow", function () { window.scrollTo(0, 0); });
+</script>
+</body>
+</html>
