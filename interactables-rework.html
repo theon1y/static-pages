@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Переработка интерактивных объектов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f4;
+  --fg: #17202b;
+  --muted: #5b6878;
+  --line: #d8dee5;
+  --old: #a63d52;
+  --old-bg: #fbeff1;
+  --new: #0d7468;
+  --new-bg: #e8f5f2;
+  --client: #2f5fb3;
+  --server: #a3640b;
+  --core: #6b47b8;
+  --de: #5b6878;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --surface: #182029; --surface-2: #1f2933; --fg: #e3e8ee; --muted: #94a1b2; --line: #2c3743;
+    --old: #f08a9c; --old-bg: #2a1a20; --new: #5fd0bf; --new-bg: #142824;
+    --client: #84a9f0; --server: #e7ad56; --core: #b39af0; --de: #94a1b2;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --surface: #182029; --surface-2: #1f2933; --fg: #e3e8ee; --muted: #94a1b2; --line: #2c3743;
+  --old: #f08a9c; --old-bg: #2a1a20; --new: #5fd0bf; --new-bg: #142824;
+  --client: #84a9f0; --server: #e7ad56; --core: #b39af0; --de: #94a1b2;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.wrap {
+  max-width: 1280px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+h1, h2, h3 { font-family: var(--font-head); text-wrap: balance; margin: 0; }
+
+header.top { padding-block: 36px 24px; display: grid; gap: 14px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; color: var(--muted); letter-spacing: 0.04em; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.eyebrow b { color: var(--fg); font-weight: 500; }
+h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; }
+.lede { max-width: 72ch; color: var(--muted); margin: 0; font-size: 15px; }
+.stat { display: flex; gap: 18px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 13px; }
+.stat .add { color: var(--new); } .stat .del { color: var(--old); }
+
+nav.index {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px);
+  border-block: 1px solid var(--line);
+}
+nav.index .wrap { display: flex; gap: 6px; align-items: center; overflow-x: auto; padding-block: 8px; scrollbar-width: thin; }
+nav.index a {
+  white-space: nowrap; text-decoration: none; color: var(--fg); font-weight: 500; font-size: 13px;
+  padding: 5px 10px; border-radius: 6px; border: 1px solid transparent;
+}
+nav.index a:hover, nav.index a:focus-visible { border-color: var(--line); background: var(--surface); outline: none; }
+nav.index .sp { flex: 1; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.toggle input { accent-color: var(--new); }
+
+section { padding-block: 32px 8px; scroll-margin-top: 56px; }
+.sec-head { display: grid; gap: 6px; margin-bottom: 16px; }
+.sec-head h2 { font-size: 24px; }
+.sec-head p { margin: 0; color: var(--muted); max-width: 80ch; }
+.sec-head .members { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+
+ol.arch { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; }
+ol.arch li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; min-width: 0; }
+ol.arch h3 { font-size: 16px; }
+ol.arch p { margin: 0; color: var(--muted); }
+ol.arch p code { color: var(--fg); }
+.gone { color: var(--old); text-decoration: line-through; text-decoration-thickness: 1px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; font-size: 12.5px; color: var(--muted); margin-top: 18px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+.where {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em; line-height: 1;
+  padding: 3px 5px; border-radius: 4px; border: 1px solid currentColor; flex: none; min-width: 42px; text-align: center;
+}
+.where.c { color: var(--client); } .where.s { color: var(--server); } .where.k { color: var(--core); } .where.d { color: var(--de); }
+.tag { font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 2px 5px; border-radius: 3px; letter-spacing: 0.03em; }
+.tag.rm { color: var(--old); background: var(--old-bg); }
+.tag.nw { color: var(--new); background: var(--new-bg); }
+
+.grid { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.row { display: grid; grid-template-columns: 128px minmax(0, 1fr) minmax(0, 1fr); border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row.head { background: var(--surface-2); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.row.head > div { padding: 8px 14px; }
+.row.head .o { color: var(--old); } .row.head .n { color: var(--new); }
+.stage { padding: 14px; font-family: var(--font-head); font-weight: 600; font-size: 15px; border-right: 1px solid var(--line); background: var(--surface-2); }
+.stage small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.cell { padding: 12px 14px; min-width: 0; }
+.cell.o { border-right: 1px solid var(--line); }
+.cell .ml { display: none; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+.cell.o .ml { color: var(--old); } .cell.n .ml { color: var(--new); }
+
+ol.pipe { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+ol.pipe li { position: relative; padding: 0 0 12px 22px; min-width: 0; }
+ol.pipe li:last-child { padding-bottom: 0; }
+ol.pipe li::before { content: ""; position: absolute; left: 5px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+ol.pipe li::after { content: ""; position: absolute; left: 8px; top: 18px; bottom: 2px; width: 1px; background: var(--line); }
+ol.pipe li:last-child::after { display: none; }
+.cell.o li.rm::before { background: var(--old); }
+.cell.n li.nw::before { background: var(--new); }
+.sh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sh code { font-weight: 600; font-size: 12.5px; overflow-wrap: anywhere; }
+li.rm .sh code { color: var(--old); }
+li.nw .sh code { color: var(--new); }
+.desc { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.desc code { color: var(--fg); font-size: 12px; overflow-wrap: anywhere; }
+.na { color: var(--muted); font-style: italic; }
+body.compact .desc { display: none; }
+body.compact ol.pipe li { padding-bottom: 6px; }
+
+footer { padding-block: 40px; color: var(--muted); font-size: 12.5px; }
+
+.walk { display: grid; gap: 12px; }
+.phase { display: grid; grid-template-columns: 200px minmax(0, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.phase-head { padding: 14px; background: var(--surface-2); border-right: 1px solid var(--line); display: grid; align-content: start; gap: 4px; }
+.phase-head .num { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.phase-head h3 { font-size: 16px; }
+.phase-head p { margin: 0; font-size: 12.5px; color: var(--muted); }
+.phase .body { padding: 14px; min-width: 0; }
+.callouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 10px; margin-top: 14px; }
+.callout { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--surface); min-width: 0; }
+.callout h4 { margin: 0 0 4px; font-family: var(--font-head); font-size: 14px; }
+.callout p { margin: 0; color: var(--muted); font-size: 13px; }
+.callout p code { color: var(--fg); }
+.callout.warn { border-color: color-mix(in srgb, var(--server) 45%, var(--line)); }
+.callout.warn h4 { color: var(--server); }
+@media (max-width: 820px) {
+  .phase { grid-template-columns: minmax(0, 1fr); }
+  .phase-head { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+@media (max-width: 820px) {
+  .row { grid-template-columns: minmax(0, 1fr); }
+  .row.head { display: none; }
+  .stage { border-right: 0; border-bottom: 1px solid var(--line); padding: 10px 14px; }
+  .stage small { display: inline; margin-left: 6px; }
+  .cell.o { border-right: 0; border-bottom: 1px dashed var(--line); }
+  .cell .ml { display: block; }
+}
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <div class="eyebrow"><span>коммит <b>5450b825cc7</b></span><span>ветка <b>authorative-server</b></span><span>“rework interactables wip”</span><span>2026-11-09</span></div>
+  <h1>Переработка интерактивных объектов</h1>
+  <p class="lede">Интерактивные объекты теперь живут на той сущности, которой принадлежат, а исход каждого взаимодействия решает сервер. В первом разделе перечислены архитектурные изменения. Дальше для каждого типа интерактивного объекта — сравнение «Было / Стало» по пайплайнам инициализации, взаимодействия, мультиплеера, выключения и респауна.</p>
+  <div class="stat"><span>519 файлов</span><span class="add">+5078</span><span class="del">−5790</span></div>
+</header>
+
+<nav class="index" aria-label="Разделы">
+  <div class="wrap" id="navlinks">
+    <a href="#architecture">Архитектура</a>
+    <a href="#storage-mine">Пример: платная шахта</a>
+    <span class="sp"></span>
+    <label class="toggle"><input type="checkbox" id="compact"> Только системы</label>
+  </div>
+</nav>
+
+<main class="wrap">
+  <section id="architecture">
+    <div class="sec-head">
+      <h2>Архитектурные изменения</h2>
+      <p>Относятся ко всем типам ниже.</p>
+    </div>
+    <ol class="arch">
+      <li><h3>Сущность-владелец и есть интерактивный объект</h3><p>Сущности шахт, терминалов, порталов и нокдауна сами несут компоненты интерактивного объекта. Клиент добавляет <code>InteractableObjectUtils.InteractableObjectComponents</code> к их архетипам спауна и приёма через <code>InteractableObjectArchetypeComponents</code> (расширение инициализации мира в Core, заполняется <code>BattleClientArchetypeActivator</code>). Удалены: отдельная IO-сущность, <span class="gone">InteractableObjectOwner</span>, <span class="gone">InteractableObjectReference</span> и связка через LinkedEntityGroup. Отдельные сущности создают только GO-спаунеры и контейнеры юнитов.</p></li>
+      <li><h3>Одна ссылка на группу</h3><p><code>GroupReference</code> (сущность → GroupComponent) заменяет <span class="gone">InteractableObjectParentGroupReference</span>, <span class="gone">MineRootReference</span> и прямые обращения к <code>UnitGroup</code>. Её используют также юниты, ловушки и двери. Обратная ссылка в DE — <code>EntityReference</code>, она заменяет <span class="gone">InteractableObjectEntity</span> и <span class="gone">MineEntityReference</span>.</p></li>
+      <li><h3>Create*GameObjectSystem + InitInteractableObject</h3><p>У каждого типа одна система, которая спаунит GO и вызывает <code>InitInteractableObject</code> через ECB. Этот вызов добавляет GroupReference и CurrentInteractionStageData, определяет EntityReference и активирует GO. Префабы сохранены выключенными — это заменяет трюк с <code>prefab.SetActive(false)</code> в рантайме. Запросы фильтруют по <code>WithNone GroupReference</code>.</p></li>
+      <li><h3>Стадия — серверные данные</h3><p><code>InteractionStage</code> переехал в Core. <code>InteractionObjectState.IsActive</code> (bool) стал <code>.Stage</code> (First / Second / Disabled) и синхронизируется как long. Ящики (Box) после сбора переходят в Second, всё остальное — в Disabled (<code>MineUtils.GetCollectedStage</code>).</p></li>
+      <li><h3>Один держатель стадии, один применяющий</h3><p><code>CurrentInteractionStageData</code> — один и тот же объект как DE Data и как managed-компонент. Его <code>Set</code> отправляет <code>InteractionStageChanged</code>. <code>ApplyInteractionStageSystem</code> теперь единственный, кто пишет InteractableObjectStage и InteractionId. Компонента <span class="gone">IsActive</span> больше нет: «активен» — это <code>InteractableObjectStage.IsActive</code> (стадия не Disabled), а ограничения порталов и автолут теперь меняют стадию. Удалены: <span class="gone">SetInteractionStageEvent</span>, <span class="gone">ChangeInteractableObjectStateRequest</span> вместе с System и Controller, и <span class="gone">IsInteracted</span>. Провайдеры стадии теперь — чистый <code>GetStage()</code>.</p></li>
+      <li><h3>Валидация переехала в Core</h3><p><code>ValidateInteractActionParametersSystem</code> работает и на клиенте, и на сервере. Она проверяет конфиг, блокер, стадию Disabled и дистанцию (+<code>SyncSettings.AllowedDistanceError</code>), затем выставляет ObjectOwner. Перед ней работают валидаторы типов: <code>ValidatePortalInteractionSystem</code> и <code>ValidateResurrectInteractionSystem</code>. Порталы пока исключение: они не сетевые объекты, поэтому сервер не получает цель-портал и его проверки порталов не срабатывают. На клиенте <code>InteractCommandAvailabilitySystem</code> отбрасывает команду до отправки и показывает сообщение. Она заменяет проверки в <span class="gone">PrepareInteractActionSystem</span> и <span class="gone">EnableInteractActionParametersSystem</span>.</p></li>
+      <li><h3>Общие объекты захватываются на касте</h3><p>Во время подготовки общий объект никто не блокирует: начать могут несколько игроков, побеждает тот, кто первым дойдёт до каста. <code>CastInteractActionSystem</code> (Core, миры с разрешённым расчётом) захватывает <code>ExecuteParameters.Owner</code>, затем <code>UpdateInteractableObjectOnCastSystem</code> (бывшая MineCollectedSystem, теперь в Core/Interaction) записывает стадию «собрано» и список майнеров для персональных ящиков. <span class="gone">MineCollectedBySelfSystem</span> влита в <code>InteractionObjectStageSystem</code>. Удалены: <span class="gone">SetMineOwnerSystem</span>, <span class="gone">ResetOwnerByInterruptSystem</span>, <span class="gone">ContainerInterruptInteractionByOwnerSystem</span>, а также <span class="gone">IsInterrupted</span> / <span class="gone">Frame</span> в ExecuteParameters. <code>IsPrivate</code> переименован в <code>IsPerPlayer</code>.</p></li>
+      <li><h3>InteractionResult</h3><p>На игроке теперь есть <code>InteractionResult { Tick, Status: Failure | Success | Occupied }</code>, который сервер синхронизирует через <code>SendInteractionResultSystem</code>. Неудачи пишут <code>RejectRequest</code> и <code>FailInterruptedInteractionSystem</code>. На клиенте <code>InteractRequestCompleteSystem</code> заменяет <span class="gone">InteractWithLocalObjectSystem</span> и <span class="gone">InteractWithSharedObjectSystem</span>.</p></li>
+      <li><h3>Компенсация задержки</h3><p>На сервере <code>InteractionLatencyCompensationSystem</code> укорачивает подготовку взаимодействия на <code>SyncSettings.InteractionLatencyCompensation</code> (100 мс), чтобы результат приходил на клиент к концу его локальной подготовки.</p></li>
+      <li><h3>Удалено клиентское состояние</h3><p>Кулдауна взаимодействия больше нет: <span class="gone">InteractionCooldown</span>, клиентская <span class="gone">CastInteractActionSystem</span> и <span class="gone">RemoveInteractCooldownSystem</span>. Хаб запускает системы шахт под <code>IsCalculatingAllowed</code>, раз <span class="gone">IsMineCalculationAllowed</span> удалён. Сетевое поле терминала <span class="gone">IsLocked</span> и <span class="gone">ActivateTerminalNetworkEvent</span> удалены. Синхронизация воскрешения больше не использует <span class="gone">ResurrectInteractionData</span>.</p></li>
+    </ol>
+    <div class="legend">
+      <span><span class="where c">КЛИЕНТ</span>клиентский мир</span>
+      <span><span class="where s">СЕРВЕР</span>боевой сервер / авторитет</span>
+      <span><span class="where k">CORE</span>общий код, работает с обеих сторон</span>
+      <span><span class="where d">DE</span>компонент DependencyEngine</span>
+      <span><span class="tag rm">УДАЛЕНО</span>система или тип удалены</span>
+      <span><span class="tag nw">НОВОЕ</span>добавлено в этом коммите</span>
+    </div>
+  </section>
+
+  <section id="storage-mine">
+    <div class="sec-head">
+      <h2>Пример: платная шахта хранилища в рейде</h2>
+      <p>Один игрок открывает общую (не персональную) StorageMine со стоимостью в предметах на рейдовом сервере. В каждой фазе системы перечислены в порядке выполнения.</p>
+    </div>
+    <div class="walk" id="walk"></div>
+    <div class="callouts">
+      <div class="callout"><h4>Два игрока одновременно</h4><p>Подготовку могут начать оба — ничего не блокируется. Первый каст захватывает <code>ExecuteParameters.Owner</code> и получает Success. Второй на своём тике каста получает <code>InteractionResult</code> Occupied, его <code>InteractRequestCompleteSystem</code> отправляет <code>InteractableObjectOccupied</code> (сообщение «занято»), шаги не запускаются, и ничего не списывается.</p></div>
+      <div class="callout"><h4>Персональный вариант</h4><p>При <code>IsPrivateLoot</code> у спаунера (<code>IsPerPlayer</code>) владелец не захватывается. Первый каст переводит серверную стадию в Disabled, но остальные клиенты продолжают видеть First. Каст добавляет открывшего в <code>MinerBufferElement</code> (персональные Box и StorageMine), и для него шахта считается «собранной». Завершение всё равно ждёт серверного <code>InteractionResult</code>, как и у общих шахт.</p></div>
+      <div class="callout"><h4>Отдельного подтверждения открытия нет</h4><p>Шаги запускаются только после серверного Success, а он уже означает, что игрок стал владельцем (общая шахта) или добавлен в список майнеров (персональная). Старый обмен <span class="gone">OpenMineNetworkEvent</span> / <span class="gone">MineOpenedNetworkEvent</span> и <span class="gone">ReceiveMineOpenEventSystem</span> удалены вместе с таймаутом в 3 с.</p></div>
+      <div class="callout warn"><h4>Неудачная оплата всё равно стоит шахты</h4><p>Каст расходует шахту до того, как <code>storageMineApi.OpenAsync</code> списывает оплату на мета-сервере. Если оплата не прошла, предметы остаются у игрока, но шахта для него потеряна до респауна. Мета-сервер не спрашивает боевой сервер, было ли открытие разрешено, а боевой сервер не проверяет стоимость; <code>InteractionCostAvailableProvider</code> проверяет её только на клиенте.</p></div>
+    </div>
+  </section>
+
+  <div id="types"></div>
+</main>
+
+<footer class="wrap">Собрано по <span class="mono">git show 5450b825cc7</span> и обновлённой docs/unity/battle/core/interactable-objects. Коммит помечен как WIP.</footer>
+
+<script>
+const W = { c: "КЛИЕНТ", s: "СЕРВЕР", k: "CORE", d: "DE" };
+const STAGES = [
+  ["init", "Инициализация", "спаун → IO готов"],
+  ["interact", "Взаимодействие", "соло / хаб, локальный авторитет"],
+  ["mp", "Мультиплеер", "клиент ⇄ сервер"],
+  ["disable", "Выключение", "стадия → неактивна"],
+  ["respawn", "Респаун", "обратно в First"]
+];
+
+const TYPES = [
+{
+  id: "mine", name: "Шахта", members: "Mine · StorageMine · Box (ContainerRoot)",
+  summary: "Раньше две клиентские системы строили GO и отдельную IO-сущность, а владелец захватывался в начале взаимодействия. Теперь сущность шахты сама является интерактивным объектом, владение захватывается на касте, а исход сервер сообщает в InteractionResult.",
+  init: {
+    o: [
+      ["s", "SpawnMineBySpawnersSystem / SpawnMineOnRoomUnlockSystem", "Сущность шахты из `MineUtils.SelfMineArchetypeComponents`; `InteractionObjectState{IsActive=true}`, `ExecuteParameters{IsPrivate}`."],
+      ["c", "ReceiveMineSystem", "Replica; `IsActive` из long-поля State; ExecuteParameters, включая `IsInterrupted`, `IsPrivate`."],
+      ["c", "CreateMineRootSystem", "Выбирает префаб MineRoot / StorageMineRoot / ContainerRoot, переключает `prefab.SetActive(false)`, чтобы сначала выставить id, определяет MineId + `MineEntityReference`, `InitializeContainer`, добавляет `MineRootReference`.", "rm"],
+      ["c", "CreateMineInteractableObjectSystem", "Создаёт отдельную IO-сущность, `SharedObjectTag` если не приватная, `InteractableObjectOwner` → шахта, `InteractableObjectReference` на шахте. Стадия не First → `SetInteractableObjectStage` + `SetInteractionStageEvent` + `RemoveLootFromContainer`.", "rm"],
+      ["d", "ChangeInteractableObjectStateRequestController", "Передаёт стадию провайдера обратно в IO-сущность.", "rm"]
+    ],
+    n: [
+      ["s", "SpawnMineBySpawnersSystem / SpawnMineOnRoomUnlockSystem", "Архетип `.With(InteractableObjectComponents)`; `State{Stage=First}`, `ExecuteParameters{IsPerPlayer}`."],
+      ["c", "ReceiveMineSystem", "Архетип включает IO-компоненты; `Stage` читается из long-поля State."],
+      ["c", "CreateMineGameObjectSystem", "Префаб из `MinePrefabs` по `MineType`. Если уже собрана (общая, или персональная и я в `MinerBufferElement`) → `InitializeCollectedContainer` (пустой и открытый, лут не роллится); иначе `InitializeContainer`. `ecb.InitInteractableObject(e, …, collected ? serverStage : First)`.", "nw"]
+    ]
+  },
+  interact: {
+    o: [
+      ["c", "PlayerInteractInputAuthoring", "Id взаимодействия берётся из `InteractionTargetState`."],
+      ["c", "PrepareInteractActionSystem", "Клиентские проверки: параметры включены, кулдаун, блокер, конфиг, дистанция, `IInteractableObjectAvailableProvider`, занятость (`SharedObjectTag` + владелец), уже в процессе. Создаёт InteractRequest."],
+      ["k", "EnableInteractActionParametersSystem", "`ObjectOwner` = `InteractableObjectOwner.Entity` или цель.", "rm"],
+      ["k", "SetMineOwnerSystem", "Захватывает `ExecuteParameters.Owner` на старте (для неприватных), сохраняет `Frame`.", "rm"],
+      ["c", "ContainerInterruptInteractionByOwnerSystem", "Прерывает всех остальных, пока шахта кому-то принадлежит (Box — исключение после выключения).", "rm"],
+      ["k", "MineCollectedSystem", "На касте: `IsActive=false`, если не `IsInterrupted`."],
+      ["c", "CastInteractActionSystem", "Клиент: включает `IsInteracted` на цели, запускает кулдаун.", "rm"],
+      ["c", "InteractWithSharedObjectSystem", "Ждёт владельца → IsActive false → отправляет `ObjectInteracted` (Mine/StorageMine — только владельцу).", "rm"]
+    ],
+    n: [
+      ["c", "PlayerInteractInputAuthoring", "Id читается из `InteractionId` цели (уже соответствует стадии)."],
+      ["c", "InteractCommandAvailabilitySystem", "Отбрасывает команду до отправки: провайдер недоступен / запрос уже идёт, показывает сообщение.", "nw"],
+      ["k", "ValidateInteractActionParametersSystem", "Конфиг, блокер, `IsDisabled` (владелец может снова зайти в Disabled-шахту за остатками лута), дистанция + допуск. Выставляет `ObjectOwner = target`.", "nw"],
+      ["c", "PrepareInteractActionSystem", "Только создаёт InteractRequest + `ObjectInteractionStarted`."],
+      ["k", "CastInteractActionSystem", "`IsOccupied` → захватывает Owner, если свободно; пишет `InteractionResult` Success / Occupied.", "nw"],
+      ["k", "UpdateInteractableObjectOnCastSystem", "Переименована из MineCollectedSystem. Каст владельца или персональный каст → `Stage = GetCollectedStage` (Box → Second, иначе Disabled). Персональные Box или StorageMine добавляют игрока в `MinerBufferElement`."],
+      ["c", "InteractRequestCompleteSystem", "Объекты с `ExecuteParameters` (общие и персональные): ждёт `InteractionResult.Tick == request.Frame` → `ObjectInteracted` или `InteractableObjectOccupied`.", "nw"]
+    ]
+  },
+  mp: {
+    o: [
+      ["c", "Локальное предсказание", "Клиент выполнял те же проверки подготовки и предсказывал взаимодействие."],
+      ["s", "SetMineOwnerSystem → ResetOwnerByInterruptSystem → MineCollectedSystem", "Сервер ставил владельца на старте, сбрасывал его с `IsInterrupted=true` при прерывании, выключал на касте.", "rm"],
+      ["s", "SendMineSystem", "Синхронизировал `State` (0/1) и ExecuteParameters `Owner/IsPrivate/IsInterrupted`."],
+      ["c", "InteractWithSharedObjectSystem", "Выводил исход из синхронизированных owner / Frame / IsInterrupted / IsActive; отдельная защита от офлайн-мультивзаимодействия («отправлять только последнему»).", "rm"],
+      ["s", "ReceiveMineOpenEventSystem", "Принимал событие открытия от любого пользователя."]
+    ],
+    n: [
+      ["s", "ApplyPlayerInputSystem → InteractionLatencyCompensationSystem", "Подготовка укорочена на 100 мс, чтобы результат пришёл к концу клиентской подготовки.", "nw"],
+      ["s", "Validate* → CastInteractActionSystem → UpdateInteractableObjectOnCastSystem", "Готовиться могут несколько игроков; первый каст захватывает, остальные получают Occupied."],
+      ["s", "FailInterruptedInteractionSystem / RejectRequest", "Пишут Failure (или Occupied), если каста не было или запрос отклонён.", "nw"],
+      ["s", "SendInteractionResultSystem → ReceiveInteractionResultSystem", "`InteractionResultNetworkData{Tick, Status}` в шаблоне игрока.", "nw"],
+      ["s", "SendMineSystem", "Синхронизирует `State` как long-стадию и ExecuteParameters `Owner/IsPerPlayer`."],
+      ["s", "ReceiveMineOpenEventSystem", "Удалена: шаг хранилища запускается только после Success в `InteractionResult`, так что событие открытия стало лишним.", "rm"]
+    ]
+  },
+  disable: {
+    o: [
+      ["c", "MineStateChangedSystem", "При изменении State: `MineClientUtils.GetMineStage(IsActive, ContainerType)`; приватные шахты пропускаются; Disabled для не-владельца → `RemoveLootFromContainer` + `SetInteractionStageEvent`.", "rm"],
+      ["c", "ChangeInteractableObjectStateSystem", "Применяет запрос: IsActive / InteractionId / IsInteracted.", "rm"],
+      ["d", "MineContainerInteractionStageController", "При синхронизации контейнера → `UpdateStage()` провайдера (`ResourceInteractionStageProvider`: залутан → Disabled).", "rm"]
+    ],
+    n: [
+      ["c", "MineCollectedBySelfSystem", "Влита в InteractionObjectStageSystem; реплицируемое состояние больше не пишет.", "rm"],
+      ["c", "InteractionObjectStageSystem", "`GetMineStage(server, IsPerPlayer, collectedBySelf, HasLoot)`: собравший видит Second, пока остался лут, и Disabled, когда контейнер пуст. Остальные видят серверную стадию (персональная остаётся First). Серверный First, пока я ещё в `MinerBufferElement`, считается устаревшим, а не респауном. Disabled и не моя → `RemoveLootFromContainer`. Пропускает цель ожидающего запроса.", "nw"],
+      ["c", "CurrentInteractionStageData.Set → ApplyInteractionStageSystem", "Шлёт `InteractionStageChanged`; применяющий пишет `InteractableObjectStage` Disabled, и таргетинг его отбрасывает.", "nw"],
+      ["c", "InterruptInteractActionByInteractionStageChangeSystem", "Прерывает, если `InteractionId` цели ≠ Id в параметрах или её стадия Disabled."]
+    ]
+  },
+  respawn: {
+    o: [
+      ["s", "StartRespawnMineSystem / RespawnMineSystem", "Под `IsCalculatingAllowed` или `IsMineCalculationAllowed` (хаб). `IsActive=true`, сброс Owner / IsInterrupted / Frame."],
+      ["c", "MineStateChangedSystem", "First → смена стадии + `RespawnContainer`.", "rm"],
+      ["d", "LootContainerCloseController", "Закрывает UI по `SetInteractionStageEvent(First)`."]
+    ],
+    n: [
+      ["s", "StartRespawnMineSystem / RespawnMineSystem", "Только под `IsCalculatingAllowed` (хаб больше не создаёт `IsMineCalculationAllowed`). `Stage=First`, сброс Owner."],
+      ["c", "InteractionObjectStageSystem", "Серверная стадия First → `RespawnContainer` + `Set(First)`."],
+      ["d", "LootContainerCloseController", "Закрывает UI по `InteractionStageChanged`, когда текущее значение First."]
+    ]
+  }
+},
+{
+  id: "terminal", name: "Терминал комнаты", members: "RoomTerminal",
+  summary: "Состояние блокировки терминала раньше было отдельным полем IsLocked, которое менял клиент через сетевое событие. Теперь оно следует серверной стадии через тот же пайплайн захвата на касте, что и у шахт, а 5-секундного респауна больше нет.",
+  init: {
+    o: [
+      ["s", "CreateRoomsSystem", "Терминал с `IsLocked` + `InteractionObjectState{IsActive = IsLocked}`."],
+      ["c", "ReceiveTerminalSystem", "Читает оба поля: `IsLocked` и `State`."],
+      ["c", "CreateTerminalInteractableObjectSystem", "GO + отдельная IO-сущность (`SharedObjectTag`, Owner, стадия из IsActive). Disabled → `SetInteractionStageEvent`. Добавляет `InteractableObjectReference`.", "rm"]
+    ],
+    n: [
+      ["s", "CreateRoomsSystem", "Архетип + IO-компоненты; `Stage = IsLocked ? First : Disabled`. Компонента `IsLocked` на терминале нет."],
+      ["c", "ReceiveTerminalSystem", "Читает только `Stage`."],
+      ["c", "CreateTerminalGameObjectSystem", "GO + `ecb.InitInteractableObject(e, …, serverStage)`.", "nw"]
+    ]
+  },
+  interact: {
+    o: [
+      ["c", "PrepareInteractActionSystem", "Те же клиентские проверки, что и у шахт."],
+      ["c", "CastInteractActionSystem", "Клиент помечает IO как `IsInteracted`.", "rm"],
+      ["c", "TerminalInteractionSystem", "При `IsCalculatingAllowed`: переключает `IsLocked` терминала.", "rm"],
+      ["c", "ToggleTerminalActiveStateSystem", "Зеркалит `IsActive = IsLocked`.", "rm"],
+      ["k", "SetMineOwnerSystem / MineCollectedSystem", "Работали и для терминала (у него есть ExecuteParameters) → IsActive false."],
+      ["s", "RoomUnlockSystem / SetRoomUnlockOwnerSystem", "Копируют `IsLocked` терминала в комнату; владелец при изменении `IsLocked`."]
+    ],
+    n: [
+      ["k", "ValidateInteractActionParametersSystem", "Общая валидация.", "nw"],
+      ["k", "CastInteractActionSystem", "Захватывает Owner; пишет InteractionResult.", "nw"],
+      ["k", "UpdateInteractableObjectOnCastSystem", "`Stage = Disabled` (не Box)."],
+      ["s", "TerminalAspect.IsLocked → RoomUnlockSystem", "`IsLocked` вычисляется: `Stage != Disabled`."],
+      ["s", "SetRoomUnlockOwnerSystem", "Срабатывает при изменении `InteractionObjectState` на Disabled."]
+    ]
+  },
+  mp: {
+    o: [
+      ["d", "SendTerminalUnlockInteractionStep", "Шаг взаимодействия отправлял `ActivateTerminalNetworkEvent` реплике терминала. Сервер доверял клиенту.", "rm"],
+      ["s", "ReceiveActivateTerminalEventSystem", "`IsLocked = false`.", "rm"],
+      ["s", "SendTerminalLockSystem → ReceiveTerminalLockSystem", "Отдельное long-поле `IsLocked`.", "rm"]
+    ],
+    n: [
+      ["s", "Validate → Cast → UpdateInteractableObjectOnCastSystem", "Тот же серверный путь, что и у шахт; InteractionResult игроку."],
+      ["s", "SendTerminalSystem", "Синхронизирует `State` как long-стадию; `InteractableObjectTemplate.IsLocked` удалён."],
+      ["c", "InteractRequestCompleteSystem", "Ждёт результат → `ObjectInteracted` / Occupied."]
+    ]
+  },
+  disable: {
+    o: [
+      ["c", "RoomTerminalStateChangeSystem", "`IsActive` → First/Disabled; выставляет `ChangeInteractableObjectStateRequest` + `SetInteractionStageEvent`; пропускает ожидающий запрос.", "rm"],
+      ["c", "ChangeInteractableObjectStateSystem", "Применяет стадию к IO-сущности.", "rm"]
+    ],
+    n: [
+      ["c", "InteractionObjectStageSystem", "Ветка не-шахт: серверная стадия (персональный → First для остальных) → `Set`.", "nw"],
+      ["c", "ApplyInteractionStageSystem", "Пишет стадию и InteractionId.", "nw"]
+    ]
+  },
+  respawn: {
+    o: [
+      ["c", "StartRespawnTerminalSystem", "Если заблокирован и неактивен → `RespawnTerminalTime = now + 5s`.", "rm"],
+      ["c", "RespawnTerminalSystem", "По таймауту: `IsActive = true`.", "rm"]
+    ],
+    n: [["", "", "Респауна нет: после разблокировки терминал остаётся Disabled."]]
+  }
+},
+{
+  id: "portal", name: "Портал", members: "Portal (переход между локациями по ограничению на пачки юнитов)",
+  summary: "Корень портала теперь сам является интерактивным объектом, а стадией управляют ограничения вместо отдельного флага IsActive. Порталы существуют локально в каждом мире и не реплицируются, поэтому их стадия клиент-локальная, а сервер сейчас не может определить, каким порталом воспользовался игрок.",
+  init: {
+    o: [
+      ["s", "SpawnPortalSystem", "Корень с компонентом `InteractionId`."],
+      ["c", "CreatePortalInteractableObjectSystem", "Трюк с активностью префаба, GO, отдельная IO-сущность, Owner, стадия First, `InteractableObjectReference`, LinkedEntityGroup.", "rm"]
+    ],
+    n: [
+      ["s", "SpawnPortalSystem", "Архетип корня + IO-компоненты; id переехал в `PortalParameters.InteractionId`."],
+      ["c", "CreatePortalGameObjectSystem", "GO + `InteractionDataProvider(PortalParameters.InteractionId)` + `InitInteractableObject` на корне. Порталы с ограничением (задан `RestrictionId`) стартуют в Disabled, остальные — в First.", "nw"]
+    ]
+  },
+  interact: {
+    o: [
+      ["c", "PrepareInteractActionSystem", "Клиентские проверки, включая `IInteractableObjectAvailableProvider` → `ObjectStartInteractionUnavailable`."],
+      ["c", "InteractWithLocalObjectSystem", "После `InteractionEndTime` → `ObjectInteracted` → DE перемещает игрока.", "rm"]
+    ],
+    n: [
+      ["c", "InteractCommandAvailabilitySystem", "Сообщение от провайдера доступности до отправки.", "nw"],
+      ["k", "ValidatePortalInteractionSystem", "Отклоняет, если выставлен бит ограничения `RequiredKills` или ранг < `RequiredLocationRank` (через `LocationAutoBalance`).", "nw"],
+      ["k", "ValidateInteractActionParametersSystem", "Общая валидация.", "nw"],
+      ["c", "InteractRequestCompleteSystem", "Локальная ветка (без ExecuteParameters): таймер → `ObjectInteracted`.", "nw"]
+    ]
+  },
+  mp: {
+    o: [
+      ["c", "PortalUnitPackKilledRestrictionSystem", "Жила в Client; сервер никогда не проверял ограничения порталов."]
+    ],
+    n: [
+      ["c", "PortalUnitPackKilledRestrictionSystem", "Переехала в Locations с `RareUpdatePortalRestrictionSystemGroup`; `PortalRestrictionSource` переехал в Core. Каждый мир по-прежнему считает ограничения для своей копии портала."],
+      ["s", "SendPlayerInputSystem → ApplyPlayerInputSystem", "Известная дыра: у портала нет `Replica`, поэтому отправляется только позиция, и `ActionTarget.Target` на сервере null. `ValidatePortalInteractionSystem` и `PortalInteractCastActionSystem` не находят `PortalParameters` и на сервере ничего не делают."]
+    ]
+  },
+  disable: {
+    o: [["c", "PortalRestrictionsSystem", "Пишет `IsActive` на IO-сущность через `InteractableObjectReference`."]],
+    n: [
+      ["c", "PortalRestrictionsSystem", "Managed-цикл, последний в группе ограничений: `CurrentInteractionStageData.Set(Mask > 0 ? Disabled : First)` для порталов с ограничением. В обе стороны, потому что ограничение «убить всех» считается снятым, пока пачки не заспаунились.", "nw"],
+      ["c", "ApplyInteractionStageSystem", "Применяет стадию; таргетинг и прерывание читают `InteractableObjectStage`."]
+    ]
+  },
+  respawn: { o: [["", "", "Не применимо."]], n: [["", "", "Не применимо."]] }
+},
+{
+  id: "knockdown", name: "Нокдаун", members: "KnockdownInteractableObject (воскрешение)",
+  summary: "Раньше каждый воскрешающий синхронизировал ResurrectInteractionData, а клиенты выводили из него KnockdownState. Теперь KnockdownState выводит сервер из активных взаимодействий и отклоняет второго воскрешающего.",
+  init: {
+    o: [
+      ["k", "LifeCycleTagSystem / ReceiveKnockdownSystem", "Сущность нокдауна (`KnockdownUtils.KnockdownComponents`)."],
+      ["c", "CreateUnitKnockdownInteractableObjectSystem", "GO под корнем юнита; отдельная IO-сущность, чья группа — `UnitGroup` юнита; объект Transform; Owner + Reference + LinkedEntityGroup.", "rm"]
+    ],
+    n: [
+      ["k", "LifeCycleTagSystem / ReceiveKnockdownSystem", "Архетип + IO-компоненты + `LocalTransform`, скопированный с юнита."],
+      ["c", "CreateUnitKnockdownGameObjectSystem", "GO под корнем юнита со своей `KnockdownGroup` (id = id группы юнита); `InitInteractableObject` на сущности нокдауна.", "nw"]
+    ]
+  },
+  interact: {
+    o: [
+      ["c", "PrepareInteractActionSystem", "Клиентские проверки."],
+      ["k", "ResurrectCastSystem", "На подготовке: `ResurrectInteractionData{InProgress, Target}` на воскрешающем.", "rm"],
+      ["k", "ResurrectPlayerInteractionSystem", "→ `KnockdownState` Resurrecting / Knocked.", "rm"],
+      ["k", "UpdateKnockdownTimeSystem", "Ставит таймер на паузу, выставляет `IsResurrecting`."],
+      ["k", "ResurrectByTimeSystem", "Достигнут `PauseEnd` → `ResurrectRequest`, State End.", "rm"],
+      ["k", "ResurrectInterruptSystem", "Прерывание → `InProgress = false`.", "rm"]
+    ],
+    n: [
+      ["c", "InteractCommandAvailabilitySystem", "`KnockdownState ≠ Knocked` → сообщение `InteractableObjectOccupied`.", "nw"],
+      ["k", "ValidateResurrectInteractionSystem", "Отклоняет, если нокдаун не в Knocked.", "nw"],
+      ["k", "KnockdownTransformSystem", "Копирует `LocalTransform` юнита, чтобы проверка дистанции работала на сущности нокдауна.", "nw"],
+      ["k", "KnockdownResurrectionStateSystem", "Resurrecting, пока кто-то готовится или кастует на него, иначе Knocked. На касте с локальным (`Self`) юнитом → `ResurrectRequest` + End.", "nw"],
+      ["k", "UpdateKnockdownTimeSystem", "Пауза отслеживается через `KnockdownTime.IsPaused` (`PauseEnd > 0`)."]
+    ]
+  },
+  mp: {
+    o: [
+      ["s", "SendResurrectInteractionSystem → ReceiveResurrectInteractionDataSystem", "Синхронизировал `ResurrectInteractionDataEvent{InProgress, TargetId}` для каждого игрока; каждый клиент выводил KnockdownState сам.", "rm"]
+    ],
+    n: [
+      ["s", "KnockdownResurrectionStateSystem", "Только на сервере (`CalculationAllowed`); KnockdownState — синхронизируемая истина."],
+      ["s", "ValidateResurrectInteractionSystem", "Второй воскрешающий отклоняется на сервере; `EndKnockdownSystem` теперь только при разрешённом расчёте."]
+    ]
+  },
+  disable: {
+    o: [["c", "DestroyKnockdownInteractableObjectSystem", "При Disabled нокдауна: снимает ссылку на группу (чтобы не задеть сущность игрока), уничтожает IO-сущность.", "rm"]],
+    n: [
+      ["k", "DestroyKnockdownSystem", "IO-компоненты живут на сущности нокдауна и уничтожаются вместе с ней."],
+      ["k", "ResurrectionMoveBlockerSystem", "Переименована из MoveBlockerWhenResurrectingSystem; последняя в KnockdownSystemGroup, перед уничтожением."]
+    ]
+  },
+  respawn: { o: [["", "", "Не применимо."]], n: [["", "", "Не применимо."]] }
+},
+{
+  id: "unit-container", name: "Контейнер юнита", members: "UnitContainer (лут с убитых юнитов)",
+  summary: "По-прежнему отдельная сущность. Её архетип теперь берётся из общих IO-компонентов, а смена стадии идёт через CurrentInteractionStageData вместо запроса DE→ECS.",
+  init: {
+    o: [["c", "CreateUnitInteractableObjectSystem", "Трюк с активностью префаба; сущность из `InteractableObjectSystemUtils.Components` + DestroyWhenDisableTag + UnitLoot; `SetInteractableObject`; определяет `InteractableObjectEntity`.", "rm"]],
+    n: [["c", "CreateUnitContainerGameObjectSystem", "Архетип из синглтона `InteractableObjectComponents` + LocalTransform + DestroyWhenDisableTag + UnitLoot; `ecb.InitInteractableObject` (стадия First).", "nw"]]
+  },
+  interact: {
+    o: [
+      ["c", "PrepareInteractActionSystem", "Все проверки на клиенте."],
+      ["c", "InteractWithLocalObjectSystem", "Таймер → `ObjectInteracted`.", "rm"]
+    ],
+    n: [
+      ["k", "ValidateInteractActionParametersSystem", "Конфиг, блокер, дистанция.", "nw"],
+      ["c", "InteractRequestCompleteSystem", "Локальная ветка: таймер → `ObjectInteracted`.", "nw"]
+    ]
+  },
+  mp: {
+    o: [["c", "Только клиент", "Сервер не участвует."]],
+    n: [["s", "ValidateInteractActionParametersSystem", "Сервер перепроверяет запрос; владения нет (нет ExecuteParameters), поэтому исход остаётся локальным."]]
+  },
+  disable: {
+    o: [
+      ["d", "UnitContainerInteractionStageController", "`UpdateStage()` провайдера → `InteractionStageChangedEvent`."],
+      ["d", "ChangeInteractableObjectStateRequestController", "→ `authoring.ChangeInteractionStage`.", "rm"],
+      ["c", "ChangeInteractableObjectStateSystem", "Применяет к сущности.", "rm"]
+    ],
+    n: [
+      ["d", "UnitContainerInteractionStageController", "Также по `LocationContainerOpenedEvent` / `RuntimeLocationContainerOpenedEvent` → `CurrentInteractionStageData.Set(provider.GetStage())`."],
+      ["c", "AutoLootSystem", "После автосбора — `CurrentInteractionStageData.Set(Disabled)`; пропускает уже Disabled контейнеры."],
+      ["c", "ApplyInteractionStageSystem → DestroyDisableInteractableObjectSystem", "Стадия Disabled; таймер уничтожения теперь срабатывает по изменениям `InteractableObjectStage`.", "nw"]
+    ]
+  },
+  respawn: { o: [["", "", "Не применимо."]], n: [["", "", "Не применимо."]] }
+},
+{
+  id: "go-spawned", name: "Объекты из GO", members: "Сундуки · финальные контейнеры · алтари лабиринта · снаряжение · квестовые объекты · NPC · переходы",
+  summary: "Эти объекты настраиваются на GO локации через InteractableObjectSpawner, а их стадия вычисляется на клиенте. Сущность теперь создаётся всегда, а препятствия добавляются лениво.",
+  init: {
+    o: [
+      ["d", "InteractableObjectSpawner.DefineRequestIfNeed", "Создавал сущность, только если стадия провайдера ≠ Disabled; иначе — при первом выходе из Disabled."],
+      ["d", "InteractableObjectAuthoring", "Выбирал один из трёх архетипов по режиму препятствия; определял `InteractableObjectEntity`."]
+    ],
+    n: [
+      ["d", "InteractableObjectSpawner", "Всегда создаёт сущность со `StageProvider.GetStage()`; `MarkSpawned(entity)`."],
+      ["d", "InteractableObjectAuthoring", "Один архетип + LocalTransform; `CreateObstacle` добавляет компоненты препятствия, когда стадия впервые выходит из Disabled."]
+    ]
+  },
+  interact: {
+    o: [
+      ["c", "PrepareInteractActionSystem", "Клиентские проверки."],
+      ["c", "InteractWithLocalObjectSystem", "Таймер → `ObjectInteracted`.", "rm"]
+    ],
+    n: [
+      ["c", "InteractCommandAvailabilitySystem", "Сообщение провайдера доступности.", "nw"],
+      ["k", "ValidateInteractActionParametersSystem", "Конфиг, блокер, дистанция.", "nw"],
+      ["c", "InteractRequestCompleteSystem", "Локальная ветка: таймер → `ObjectInteracted`.", "nw"]
+    ]
+  },
+  mp: {
+    o: [["c", "Только клиент", "Сервер не участвует."]],
+    n: [["s", "ValidateInteractActionParametersSystem", "Сервер перепроверяет; исход остаётся локальным."]]
+  },
+  disable: {
+    o: [
+      ["d", "InteractionStageProvider", "Хранил стадию; `SetInteractionStageEvent` / `UpdateStage()` → `InteractionStageChangedEvent`."],
+      ["d", "StagedInteractionStepsController", "Вызывал `UpdateStage()` после шагов."],
+      ["d", "ChangeInteractableObjectStateRequestController", "→ `ChangeInteractableObjectStateRequest` → System.", "rm"]
+    ],
+    n: [
+      ["d", "Controllers → CurrentInteractionStageData.Set(GetStage())", "UnitContainerInteractionStageController (сундуки), EquipmentRepairStageController, LocationFinalContainerInteractionController, провайдеры стадии Maze / QuestObject (Optional-зависимость)."],
+      ["d", "StagedInteractionStepsController", "Стадию больше не обновляет. `SimpleInteractionStageProvider` всегда возвращает First."],
+      ["c", "ApplyInteractionStageSystem", "Применяет к сущности.", "nw"]
+    ]
+  },
+  respawn: {
+    o: [["", "", "Отдельного пайплайна нет; стадию пересчитывает провайдер."]],
+    n: [["", "", "Отдельного пайплайна нет; стадию пересчитывают контроллеры (тот же путь, что и при выключении)."]]
+  }
+}
+];
+
+function rich(el, text) {
+  const parts = text.split("`");
+  parts.forEach((p, i) => {
+    if (!p) return;
+    if (i % 2) { const c = document.createElement("code"); c.textContent = p; el.appendChild(c); }
+    else el.appendChild(document.createTextNode(p));
+  });
+}
+
+function pipeline(steps, side) {
+  const ol = document.createElement("ol");
+  ol.className = "pipe";
+  steps.forEach(([w, sys, desc, tag]) => {
+    const li = document.createElement("li");
+    if (!w && !sys) {
+      const p = document.createElement("p");
+      p.className = "na"; p.style.margin = "0";
+      p.textContent = desc;
+      li.appendChild(p); ol.appendChild(li); return;
+    }
+    if (tag) li.classList.add(tag);
+    const sh = document.createElement("div"); sh.className = "sh";
+    const b = document.createElement("span"); b.className = "where " + w; b.textContent = W[w]; sh.appendChild(b);
+    const c = document.createElement("code"); c.textContent = sys; sh.appendChild(c);
+    if (tag === "rm" && side === "o") { const t = document.createElement("span"); t.className = "tag rm"; t.textContent = "УДАЛЕНО"; sh.appendChild(t); }
+    if (tag === "nw" && side === "n") { const t = document.createElement("span"); t.className = "tag nw"; t.textContent = "НОВОЕ"; sh.appendChild(t); }
+    li.appendChild(sh);
+    if (desc) { const d = document.createElement("p"); d.className = "desc"; rich(d, desc); li.appendChild(d); }
+    ol.appendChild(li);
+  });
+  return ol;
+}
+
+const host = document.getElementById("types");
+const nav = document.getElementById("navlinks");
+const spacer = nav.querySelector(".sp");
+TYPES.forEach(t => {
+  const a = document.createElement("a"); a.href = "#" + t.id; a.textContent = t.name; nav.insertBefore(a, spacer);
+  const sec = document.createElement("section"); sec.id = t.id;
+  const head = document.createElement("div"); head.className = "sec-head";
+  const h = document.createElement("h2"); h.textContent = t.name; head.appendChild(h);
+  const m = document.createElement("div"); m.className = "members"; m.textContent = t.members; head.appendChild(m);
+  const p = document.createElement("p"); p.textContent = t.summary; head.appendChild(p);
+  sec.appendChild(head);
+  const grid = document.createElement("div"); grid.className = "grid";
+  const hr = document.createElement("div"); hr.className = "row head";
+  hr.innerHTML = '<div>Этап</div><div class="o">Было</div><div class="n">Стало</div>';
+  grid.appendChild(hr);
+  STAGES.forEach(([key, label, sub]) => {
+    const row = document.createElement("div"); row.className = "row";
+    const s = document.createElement("div"); s.className = "stage"; s.textContent = label;
+    const sm = document.createElement("small"); sm.textContent = sub; s.appendChild(sm); row.appendChild(s);
+    ["o", "n"].forEach(side => {
+      const cell = document.createElement("div"); cell.className = "cell " + side;
+      const ml = document.createElement("div"); ml.className = "ml"; ml.textContent = side === "o" ? "Было" : "Стало"; cell.appendChild(ml);
+      cell.appendChild(pipeline(t[key][side], side));
+      row.appendChild(cell);
+    });
+    grid.appendChild(row);
+  });
+  sec.appendChild(grid);
+  host.appendChild(sec);
+});
+
+
+const WALK = [
+  { t: "Спаун", sub: "сервер, открытие комнаты или спаунер", steps: [
+    ["s", "SpawnMineBySpawnersSystem / SpawnMineOnRoomUnlockSystem", "Сущность шахты с `MineUtils.SelfMineArchetypeComponents` + `InteractableObjectComponents`. `InteractionObjectState{Stage=First}`, `ExecuteParameters{Owner=null, IsPerPlayer=false}`, пустой `MinerBufferElement`."],
+    ["s", "SendMineSystem", "Создаёт сетевой объект: MineId, `State` (стадия как long), владелец."]
+  ]},
+  { t: "Инициализация на клиенте", sub: "приходит реплика", steps: [
+    ["c", "ReceiveMineSystem", "Архетип реплики уже включает компоненты интерактивного объекта; `Stage` читается из поля State."],
+    ["c", "CreateMineGameObjectSystem", "`MineType.StorageMine` → `MinePrefabs.StorageMine` (StorageMineRoot). Не собрана → `LocationLootService.InitializeContainer`. `ecb.InitInteractableObject(e, …, First)`: GroupReference, CurrentInteractionStageData, EntityReference, GO активирован."],
+    ["c", "LoadMineVisualSystem / CreateMineVisualObjectSystem", "Визуал под тип шахты."],
+    ["c", "ClosestInteractableObjectTargetingSystem", "В радиусе, стадия не Disabled, нет `InteractionBlocked` → `InteractTarget` на игроке."]
+  ]},
+  { t: "Ввод", sub: "нажатие кнопки, клиент", steps: [
+    ["c", "PlayerInteractInputAuthoring", "Читает `InteractionId` цели (вариант First) в `PlayerCommand` взаимодействия."],
+    ["c", "SetPlayerCommandSystem → MoveToActionTargetSystem", "`ActionTarget` = сущность шахты; подводит игрока в радиус, затем включает команду."],
+    ["c", "InteractCommandAvailabilitySystem", "Спрашивает `InteractionCostAvailableProvider` группы: стадия не Disabled, прохождение локации, если требуется, предмет-стоимость есть (или все предметы бесплатны). Иначе отбрасывает команду и показывает сообщение. Также отбрасывает, если InteractRequest ещё выполняется."],
+    ["c", "SendPlayerInputSystem", "У шахты есть `Replica`, поэтому команда несёт её NetworkObjectId."],
+    ["k", "ValidateInteractActionParametersSystem", "Клиентское предсказание: конфиг, блокер, не Disabled, дистанция. Выставляет `ObjectOwner`."],
+    ["c", "PrepareInteractActionSystem", "InteractRequest (Frame = тик действия) + `ObjectInteractionStarted` → UI прогресса."]
+  ]},
+  { t: "Валидация на сервере", sub: "тот же тик на сервере", steps: [
+    ["s", "ApplyPlayerInputSystem", "Находит цель через `Storage.IdToEntity`, выставляет `ActionTarget`."],
+    ["s", "InteractionLatencyCompensationSystem", "Длительность подготовки −100 мс."],
+    ["s", "ValidateInteractActionParametersSystem", "Конфиг, `AttackBlocker`, `IsDisabled` (Disabled и не владелец шахты), дистанция + `AllowedDistanceError`. Отклонено → `InteractionResult` Failure."],
+    ["s", "StartActionSystem → подготовка", "`InterruptActionByDistanceToTargetSystem` может прервать, если игрок отойдёт."]
+  ]},
+  { t: "Каст и ответ", sub: "сервер, конец подготовки", steps: [
+    ["s", "CastInteractActionSystem", "`IsOccupied`: свободно → захватывает `Owner = player`; `InteractionResult{Tick, Success}`."],
+    ["s", "UpdateInteractableObjectOnCastSystem", "Владелец — этот игрок и стадия First → `Stage = Disabled` (шахта хранилища — не Box)."],
+    ["s", "FailInterruptedInteractionSystem", "Прервано до каста → Failure (или Occupied, если захватил кто-то другой)."],
+    ["s", "SendInteractionResultSystem / SendMineSystem", "Результат на игроке; State = Disabled и Owner на шахте."],
+    ["s", "RemoveMineObstacleSystem / StartRespawnMineSystem", "Препятствие убрано (не Box); запускается кулдаун респауна."]
+  ]},
+  { t: "Завершение на клиенте", sub: "результат получен", steps: [
+    ["c", "ReceiveInteractionResultSystem / ReceiveInteractObjectStateSystem / ReceiveExecuteOwnerSystem", "Результат, стадия и владелец приходят на клиент."],
+    ["c", "InteractionObjectStageSystem", "Пропускает эту шахту, пока её InteractRequest ожидает."],
+    ["c", "InteractRequestCompleteSystem", "Ждёт `InteractionResult.Tick == request.Frame`. Success → `ObjectInteracted`."],
+    ["d", "StagedInteractionStepsController", "Запускает шаги по Order: квесты и аналитика (0), затем шаг хранилища (10)."],
+    ["d", "StorageMineContainerInteractionStep", "`storageMineApi.OpenAsync(mineId, tier, rank)` на мета-сервере списывает стоимость и роллит награды. Дополнительного обмена с боевым сервером нет. Ошибки показывают попап и останавливают шаг."],
+    ["d", "Награды", "Очищает контейнер шахты, списывает `OpenCost`, раскладывает награды в инвентарь или хранилище, показывает уведомление о предметах."]
+  ]},
+  { t: "Выключение", sub: "клиент, после завершения", steps: [
+    ["c", "InteractionObjectStageSystem", "Серверный Disabled, собрано мной (владелец, затем список майнеров) → Second, пока в контейнере есть лут, Disabled, когда пусто. Другие игроки: не собрано ими → Disabled, `RemoveLootFromContainer`."],
+    ["c", "CurrentInteractionStageData.Set → ApplyInteractionStageSystem", "`InteractionStageChanged` в группу (визуал, квестовые цели); `InteractableObjectStage` Disabled."],
+    ["c", "ClosestInteractableObjectTargetingSystem / InterruptInteractActionByInteractionStageChangeSystem", "Шахта перестаёт быть целью; всех, кто локально в процессе подготовки на ней, прерывает."]
+  ]},
+  { t: "Респаун", sub: "сервер, после кулдауна", steps: [
+    ["s", "RespawnMineSystem", "`Stage = First`, Owner сброшен, список майнеров очищен."],
+    ["c", "InteractionObjectStageSystem", "Серверный First и меня нет в списке майнеров → `RespawnContainer` + `Set(First)`; `LootContainerCloseController` закрывает открытый UI."]
+  ]}
+];
+const walkHost = document.getElementById("walk");
+WALK.forEach((ph, i) => {
+  const box = document.createElement("div"); box.className = "phase";
+  const head = document.createElement("div"); head.className = "phase-head";
+  const n = document.createElement("span"); n.className = "num"; n.textContent = String(i + 1).padStart(2, "0"); head.appendChild(n);
+  const h = document.createElement("h3"); h.textContent = ph.t; head.appendChild(h);
+  const p = document.createElement("p"); p.textContent = ph.sub; head.appendChild(p);
+  box.appendChild(head);
+  const body = document.createElement("div"); body.className = "body";
+  body.appendChild(pipeline(ph.steps, ""));
+  box.appendChild(body);
+  walkHost.appendChild(box);
+});
+
+const compact = document.getElementById("compact");
+try { if (localStorage.getItem("io-compact") === "1") { compact.checked = true; document.body.classList.add("compact"); } } catch (e) {}
+compact.addEventListener("change", () => {
+  document.body.classList.toggle("compact", compact.checked);
+  try { localStorage.setItem("io-compact", compact.checked ? "1" : "0"); } catch (e) {}
+});
+</script>
+</body>
+</html>
