@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Static pages</title>
+<link rel="stylesheet" href="common.css">
+<style>
+main { max-width: 720px; margin: 0 auto; padding: 48px 16px; }
+h1 { font-size: 32px; margin-bottom: 24px; }
+ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+a {
+  display: block; padding: 16px 20px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; color: var(--ink); text-decoration: none;
+}
+a:hover { border-color: var(--accent); }
+.title { font-family: var(--f-display); font-weight: 600; font-size: 19px; }
+.path { color: var(--muted); font-family: var(--f-mono); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Static pages</h1>
+  <ul>
+    <li><a href="authorative-server/index.html"><div class="title">Авторитетный сервер</div><div class="path">authorative-server/</div></a></li>
+    <li><a href="interactables-rework.html"><div class="title">Переработка интерактивных объектов</div><div class="path">interactables-rework.html</div></a></li>
+  </ul>
+</main>
+</body>
+</html>

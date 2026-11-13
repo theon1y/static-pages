@@ -1,0 +1,54 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap");
+
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --ink: #161a24;
+  --muted: #5b6273;
+  --line: #d9dde5;
+  --accent: #2f3fbf;
+  --code-bg: #eceef3;
+  --client: #1f6fd1;
+  --client-soft: #e3eefc;
+  --server: #c4610f;
+  --server-soft: #fbeadb;
+  --core: #6b47b8;
+  --good: #1d7a4c;
+  --good-soft: #def3e7;
+  --bad: #b3261e;
+  --bad-soft: #fbe3e1;
+  --f-display: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11141b; --surface: #181c25; --ink: #e7e9ef; --muted: #9aa1b2; --line: #2a303d;
+    --accent: #8e9bff; --code-bg: #1f2430;
+    --client: #6aa8f5; --client-soft: #17263b; --server: #f0a05a; --server-soft: #33241a; --core: #b39af0;
+    --good: #5cc98f; --good-soft: #15291f; --bad: #f08a83; --bad-soft: #351b1a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11141b; --surface: #181c25; --ink: #e7e9ef; --muted: #9aa1b2; --line: #2a303d;
+  --accent: #8e9bff; --code-bg: #1f2430;
+  --client: #6aa8f5; --client-soft: #17263b; --server: #f0a05a; --server-soft: #33241a; --core: #b39af0;
+  --good: #5cc98f; --good-soft: #15291f; --bad: #f08a83; --bad-soft: #351b1a;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 var(--f-body);
+}
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h1, h2, h3, h4 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+code, .mono { font-family: var(--f-mono); }
